@@ -15,9 +15,9 @@
     --font-weight-regular: 300;
     --font-weight-medium: 400;
     --font-weight-bold: 500;
-    --radius-sm: 8px;
-    --radius-md: 16px;
-    --radius-lg: 24px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
     --radius-full: 9999px;
 
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -35,7 +35,8 @@ body {
     font-family: var(--font-main);
     display: flex;
     justify-content: center;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     -webkit-font-smoothing: antialiased;
 }
 
