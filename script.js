@@ -1,9 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
     // State
     const defaultGoal = 2000;
+    const defaultMaintenance = 2500;
 
     let state = {
         goal: defaultGoal,
+        maintenance: defaultMaintenance,
         history: {} // format: { 'YYYY-MM-DD': calories }
     };
 
@@ -27,17 +29,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnPrevDay = document.getElementById('btn-prev-day');
     const btnNextDay = document.getElementById('btn-next-day');
 
-    const btnMinus500 = document.getElementById('btn-minus-500');
+    const btnMinus100 = document.getElementById('btn-minus-100');
     const btnMinus50 = document.getElementById('btn-minus-50');
     const btnPlus50 = document.getElementById('btn-plus-50');
-    const btnPlus500 = document.getElementById('btn-plus-500');
+    const btnPlus100 = document.getElementById('btn-plus-100');
     const progressBarFill = document.getElementById('progress-bar-fill');
     const presetsGrid = document.getElementById('presets-grid');
 
     const chartBarsEl = document.getElementById('chart-bars');
     const chartGoalLineEl = document.getElementById('chart-goal-line');
+    const chartMaintenanceLineEl = document.getElementById('chart-maintenance-line');
     const chartLabelsRowEl = document.getElementById('chart-labels-row');
     const chartGoalLabelEl = document.getElementById('chart-goal-label');
+    const chartMaintenanceLabelEl = document.getElementById('chart-maintenance-label');
 
     // Modals
     const caloriesModal = document.getElementById('calories-modal');
@@ -83,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saved = localStorage.getItem('calorieTrackerStateV2');
         if (saved) {
             state = JSON.parse(saved);
+            if (!state.maintenance) state.maintenance = defaultMaintenance;
         } else {
             // Migrate from v1
             const oldSaved = localStorage.getItem('calorieTrackerState');
@@ -173,13 +178,14 @@ document.addEventListener('DOMContentLoaded', () => {
         chartBarsEl.innerHTML = '';
         if (chartLabelsRowEl) chartLabelsRowEl.innerHTML = '';
         if (chartGoalLabelEl) chartGoalLabelEl.textContent = `Goal : ${state.goal}`;
+        if (chartMaintenanceLabelEl) chartMaintenanceLabelEl.textContent = `Maintenance : ${state.maintenance}`;
 
         const daysToShow = 7;
         const historyData = [];
 
         // Show 7 days ending on the viewing date
         let viewD = new Date(viewingDateString + 'T12:00:00');
-        let maxCals = state.goal;
+        let maxCals = Math.max(state.goal, state.maintenance);
 
         for (let i = daysToShow - 1; i >= 0; i--) {
             let tempD = new Date(viewD.getTime() - i * 24 * 60 * 60 * 1000);
@@ -202,9 +208,15 @@ document.addEventListener('DOMContentLoaded', () => {
         chartGoalLineEl.style.bottom = `${goalPercent}%`;
         chartGoalLineEl.style.top = 'auto';
 
+        // Maintenance line percentage
+        const maintPercent = Math.min((state.maintenance / chartMax) * 100, 100);
+        if (chartMaintenanceLineEl) {
+            chartMaintenanceLineEl.style.bottom = `${maintPercent}%`;
+            chartMaintenanceLineEl.style.top = 'auto';
+        }
+
         historyData.forEach(item => {
             const isViewingDay = item.dateStr === viewingDateString;
-            const isOver = item.cals > state.goal;
             const heightPercent = Math.min((item.cals / chartMax) * 100, 100);
 
             const col = document.createElement('div');
@@ -216,9 +228,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const bar = document.createElement('div');
             let barClasses = 'chart-bar';
             if (isViewingDay) barClasses += ' active';
-            else if (isOver) barClasses += ' over';
             bar.className = barClasses;
             bar.style.height = `${Math.max(heightPercent, 2)}%`;
+
+            // +/- inside bar
+            const diffFromMaint = item.cals - state.maintenance;
+            const sign = diffFromMaint > 0 ? '+' : '';
+            const diffText = diffFromMaint === 0 ? '0' : `${sign}${diffFromMaint}`;
+
+            bar.innerHTML = `<div class="bar-diff-text">${diffText}</div>`;
 
             barWrapper.appendChild(bar);
             col.appendChild(barWrapper);
@@ -316,10 +334,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Quick Actions
-        btnMinus500.addEventListener('click', () => adjustCalories(-500));
+        btnMinus100.addEventListener('click', () => adjustCalories(-100));
         btnMinus50.addEventListener('click', () => adjustCalories(-50));
         btnPlus50.addEventListener('click', () => adjustCalories(50));
-        btnPlus500.addEventListener('click', () => adjustCalories(500));
+        btnPlus100.addEventListener('click', () => adjustCalories(100));
 
         // Calories Modal
         caloriesCurrentEl.addEventListener('click', () => {

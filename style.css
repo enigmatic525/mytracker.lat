@@ -137,6 +137,10 @@ body {
     font-weight: var(--font-weight-medium);
 }
 
+#chart-maintenance-line {
+    border-top: 2px dashed rgba(255, 255, 255, 0.1);
+}
+
 .chart-plot-area {
     position: relative;
     width: 100%;
@@ -188,6 +192,22 @@ body {
     background: var(--surface-hover);
     border-radius: 4px 4px 0 0;
     transition: var(--transition);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    overflow: hidden;
+}
+
+.bar-diff-text {
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    padding-top: 6px;
+    pointer-events: none;
+    width: 100%;
+    text-align: center;
 }
 
 .chart-bar.active {
@@ -484,7 +504,7 @@ body {
     border: none;
     color: var(--text-secondary);
     cursor: pointer;
-    opacity: 0;
+    opacity: 1;
     position: absolute;
     right: 8px;
     top: 8px;
