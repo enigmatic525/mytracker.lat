@@ -226,7 +226,6 @@ body {
 /* Daily Progress Bar */
 .progress-section {
     width: 100%;
-    margin-bottom: 24px;
 }
 
 .progress-bar-container {
