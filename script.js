@@ -43,8 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartGoalLineEl = document.getElementById('chart-goal-line');
     const chartMaintenanceLineEl = document.getElementById('chart-maintenance-line');
     const chartLabelsRowEl = document.getElementById('chart-labels-row');
-    const chartGoalLabelEl = document.getElementById('chart-goal-label');
-    const chartMaintenanceLabelEl = document.getElementById('chart-maintenance-label');
+    const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
 
     // Modals
     const caloriesModal = document.getElementById('calories-modal');
@@ -186,11 +185,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderChart() {
         chartBarsEl.innerHTML = '';
         if (chartLabelsRowEl) chartLabelsRowEl.innerHTML = '';
-        if (chartGoalLabelEl) chartGoalLabelEl.textContent = `Goal : ${state.goal}`;
-        if (chartMaintenanceLabelEl) chartMaintenanceLabelEl.textContent = `Maintenance : ${state.maintenance}`;
 
         const daysToShow = 7;
         const historyData = [];
+        let weeklyDiff = 0;
 
         // Show 7 days ending on the viewing date
         let viewD = new Date(viewingDateString + 'T12:00:00');
@@ -202,11 +200,18 @@ document.addEventListener('DOMContentLoaded', () => {
             let c = state.history[dStr] || 0;
             if (c > maxCals) maxCals = c;
 
+            weeklyDiff += (c - state.maintenance);
+
             historyData.push({
                 dateStr: dStr,
                 cals: c,
                 label: tempD.toLocaleDateString('en-US', { weekday: 'narrow' })
             });
+        }
+
+        if (weeklyDiffLabelEl) {
+            const sign = weeklyDiff > 0 ? '+' : '';
+            weeklyDiffLabelEl.textContent = `This week: ${sign}${weeklyDiff}`;
         }
 
         // Give 20% headroom

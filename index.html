@@ -38,15 +38,13 @@
 
         <!-- Chart Section -->
         <section class="chart-section" id="chart-section" aria-label="Weekly Progress Chart">
+            <div id="weekly-difference-label"
+                style="position: absolute; top: 12px; left: 16px; font-size: 13px; color: var(--text-secondary); font-weight: var(--font-weight-medium); z-index: 5;">
+                This week: 0</div>
             <div class="chart-container">
                 <div class="chart-plot-area">
-                    <div class="chart-goal-line" id="chart-maintenance-line">
-                        <span class="chart-goal-label" id="chart-maintenance-label"
-                            style="top: -18px; bottom: auto; color: var(--text-secondary);">Maintenance : 2500</span>
-                    </div>
-                    <div class="chart-goal-line" id="chart-goal-line">
-                        <span class="chart-goal-label" id="chart-goal-label">Goal : 2000</span>
-                    </div>
+                    <div class="chart-goal-line" id="chart-maintenance-line"></div>
+                    <div class="chart-goal-line" id="chart-goal-line"></div>
                     <div class="chart-bars" id="chart-bars">
                         <!-- Bars inserted by JS -->
                     </div>
@@ -71,20 +69,6 @@
 
         <!-- Metrics Row -->
         <section class="metrics-row" style="display: flex; justify-content: space-evenly; margin: 16px 0;">
-            <div class="metric-item" id="metric-goal" role="button" tabindex="0" title="Edit Goal"
-                style="text-align: center; cursor: pointer;">
-                <div
-                    style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; font-weight: var(--font-weight-regular);">
-                    Goal</div>
-                <div
-                    style="font-size: 18px; font-weight: var(--font-weight-medium); color: var(--text-primary); position: relative; display: inline-block;">
-                    <span id="metric-goal-val">2000</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        style="position: absolute; top: 0px; right: -16px; color: var(--text-secondary);">
-                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
-                    </svg>
-                </div>
-            </div>
             <div class="metric-item" id="metric-maint" role="button" tabindex="0" title="Edit Maintenance"
                 style="text-align: center; cursor: pointer;">
                 <div
@@ -93,6 +77,20 @@
                 <div
                     style="font-size: 18px; font-weight: var(--font-weight-medium); color: var(--text-primary); position: relative; display: inline-block;">
                     <span id="metric-maint-val">2500</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="position: absolute; top: 0px; right: -16px; color: var(--text-secondary);">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                </div>
+            </div>
+            <div class="metric-item" id="metric-goal" role="button" tabindex="0" title="Edit Goal"
+                style="text-align: center; cursor: pointer;">
+                <div
+                    style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; font-weight: var(--font-weight-regular);">
+                    Goal</div>
+                <div
+                    style="font-size: 18px; font-weight: var(--font-weight-medium); color: var(--text-primary); position: relative; display: inline-block;">
+                    <span id="metric-goal-val">2000</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         style="position: absolute; top: 0px; right: -16px; color: var(--text-secondary);">
                         <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
