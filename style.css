@@ -267,6 +267,7 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    width: 110px;
 }
 
 .calories-current {
@@ -294,11 +295,11 @@ body {
 }
 
 .outer-btn {
-    margin: 0 4px;
+    margin: 0 0px;
 }
 
 .inner-btn {
-    margin: 0 12px;
+    margin: 0 10px;
 }
 
 .btn-info {
@@ -604,11 +605,11 @@ body {
     }
 
     .outer-btn {
-        margin: 0 2px;
+        margin: 0 0px;
     }
 
     .inner-btn {
-        margin: 0 6px;
+        margin: 0 4px;
     }
 
     .calories-current {
@@ -634,11 +635,11 @@ body {
     }
 
     .outer-btn {
-        margin: 0 1px;
+        margin: 0 0px;
     }
 
     .inner-btn {
-        margin: 0 3px;
+        margin: 0 2px;
     }
 
     .calories-current {
