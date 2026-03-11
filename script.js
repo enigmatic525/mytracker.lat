@@ -200,7 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let c = state.history[dStr] || 0;
             if (c > maxCals) maxCals = c;
 
-            weeklyDiff += (c - state.maintenance);
+            if (c > 0) {
+                weeklyDiff += (c - state.maintenance);
+            }
 
             historyData.push({
                 dateStr: dStr,
@@ -436,6 +438,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         btnSavePreset.addEventListener('click', () => {
+            if (presets.length >= 4) {
+                alert('Maximum of 4 presets allowed.');
+                return;
+            }
             const name = presetNameInput.value.trim();
             const cal = parseInt(presetCalInput.value);
             if (name && !isNaN(cal) && cal !== 0) {
