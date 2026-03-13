@@ -800,36 +800,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // --- X-axis labels (pick ~5 evenly spaced dates from actual data)
-            if (xAxisEl) {
-                // Number of labels scales with range
-                const maxLabels = currentWeightRange === 'week' ? 7 : currentWeightRange === 'month' ? 6 : 6;
-                const step = Math.max(1, Math.floor((days - 1) / (maxLabels - 1)));
-                const labelSlots = new Set();
-                for (let s = 0; s < days; s += step) labelSlots.add(s);
-                labelSlots.add(days - 1); // always include last
+            // X range for stretching
+            const minSlot = Math.min(...dataPoints.map(p => p.slotIndex));
+            const maxSlot = Math.max(...dataPoints.map(p => p.slotIndex));
+            const xRange = Math.max(1, maxSlot - minSlot);
 
+            // --- X-axis labels (pick evenly spaced dates from actual data)
+            if (xAxisEl) {
                 xAxisEl.style.position = 'relative';
                 xAxisEl.style.height = '16px';
 
-                labelSlots.forEach(slot => {
-                    const d = allDates[slot];
-                    if (!d) return;
+                // Sort points by slot to pick labels
+                const sortedPoints = [...dataPoints].sort((a, b) => a.slotIndex - b.slotIndex);
+                
+                // Pick up to 6 labels
+                const labelCount = Math.min(6, sortedPoints.length);
+                const labelIndices = new Set();
+                for (let i = 0; i < labelCount; i++) {
+                    labelIndices.add(Math.floor((i / Math.max(1, labelCount - 1)) * (sortedPoints.length - 1)));
+                }
+
+                labelIndices.forEach(idx => {
+                    const pt = sortedPoints[idx];
+                    const leftPct = ((pt.slotIndex - minSlot) / xRange) * 100;
+                    
                     const lbl = document.createElement('div');
-                    lbl.style.cssText = `position: absolute; left: ${(slot / (days - 1)) * 100}%; transform: translateX(-50%); font-size: 10px; color: var(--text-secondary); white-space: nowrap;`;
+                    lbl.style.cssText = `position: absolute; left: ${leftPct}%; transform: translateX(calc(-50% + ${leftPct === 0 ? '10px' : leftPct >= 99 ? '-10px' : '0px'})); font-size: 10px; color: var(--text-secondary); white-space: nowrap;`;
+                    
                     const fmt = currentWeightRange === 'year'
-                        ? d.date.toLocaleDateString('en-US', { month: 'short' })
-                        : d.date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+                        ? pt.date.toLocaleDateString('en-US', { month: 'short' })
+                        : pt.date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
                     lbl.textContent = fmt;
                     xAxisEl.appendChild(lbl);
                 });
             }
 
             // --- SVG path
-            svgEl.setAttribute('viewBox', `0 0 ${days - 1} 100`);
+            svgEl.setAttribute('viewBox', `0 0 100 100`);
             let dPath = '';
-            dataPoints.forEach((pt, index) => {
-                const px = pt.slotIndex;
+            
+            // Sort to ensure line draws left to right
+            const pathPoints = [...dataPoints].sort((a, b) => a.slotIndex - b.slotIndex);
+            
+            pathPoints.forEach((pt, index) => {
+                const px = ((pt.slotIndex - minSlot) / xRange) * 100;
                 const py = 100 - ((pt.y - minW) / yRange) * 100;
                 dPath += (index === 0 ? 'M' : 'L') + `${px.toFixed(2)},${py.toFixed(2)} `;
             });
