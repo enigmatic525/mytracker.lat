@@ -127,9 +127,10 @@
             </div>
 
             <!-- WEIGHT TAB -->
-            <div id="tab-weight" class="tab-pane">
-                <section class="chart-section" id="weight-chart-section" aria-label="Weight Progress Chart">
-                    <div style="position: absolute; top: 12px; left: 16px; right: 16px; display: flex; justify-content: space-between; z-index: 5;">
+            <div id="tab-weight" class="tab-pane" style="flex: 1; display: none; flex-direction: column; gap: 0; height: 100%;">
+                <!-- Chart fills the top area -->
+                <div id="weight-chart-section" style="flex: 1; position: relative; min-height: 0; padding: 16px 0 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 4px;">
                         <span style="font-size: 13px; color: var(--text-secondary); font-weight: var(--font-weight-medium);">Weight Trend</span>
                         <div class="chart-toggles" id="weight-chart-toggles">
                             <button class="chart-toggle" data-range="week">W</button>
@@ -137,15 +138,17 @@
                             <button class="chart-toggle" data-range="year">Y</button>
                         </div>
                     </div>
-                    <div class="chart-container" style="margin-top: 24px;">
-                        <svg id="weight-chart-svg" width="100%" height="100%" preserveAspectRatio="none">
-                           <path id="weight-chart-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    <div style="width: 100%; height: calc(100% - 36px); position: relative;">
+                        <svg id="weight-chart-svg" width="100%" height="100%" preserveAspectRatio="none" style="display: block;">
+                            <path id="weight-chart-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
                         </svg>
+                        <div id="weight-chart-empty" style="display: none; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text-secondary);">Add multiple entries to see trends</div>
                     </div>
-                </section>
+                </div>
 
-                <section class="main-tracker-section" style="flex-direction: column; gap: 16px; margin-top: 32px;">
-                    <div style="font-size: 13px; color: var(--text-secondary);">Log Weight</div>
+                <!-- Entry interface at bottom -->
+                <section class="main-tracker-section" style="flex-shrink: 0; flex-direction: column; gap: 12px; padding: 16px 0;">
+                    <div style="font-size: 12px; color: var(--text-secondary); text-align: center; letter-spacing: 0.05em; text-transform: uppercase;">Log Today's Weight</div>
                     <div style="display: flex; align-items: center; justify-content: center; gap: 16px;">
                         <button class="btn btn-icon-text inner-btn" id="btn-weight-minus">-1</button>
                         <div class="tracker-center" style="position: relative;">

@@ -614,58 +614,64 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         function renderWeightTab() {
-            // Update input to current day
-            let lastW = 150.0;
+            // Update input to viewing/today's logged weight
             const wKeys = Object.keys(state.weightHistory).sort();
-            if(wKeys.length > 0) lastW = state.weightHistory[wKeys[wKeys.length-1]];
-            
-            weightInput.value = state.weightHistory[viewingDateString] || state.weightHistory[getTodayDateString()] || lastW;
-            
-            const svgGroup = document.getElementById('weight-chart-svg');
+            let lastW = wKeys.length > 0 ? state.weightHistory[wKeys[wKeys.length - 1]] : 150.0;
+            weightInput.value = state.weightHistory[viewingDateString] 
+                             || state.weightHistory[getTodayDateString()] 
+                             || lastW;
+
+            const svgEl = document.getElementById('weight-chart-svg');
+            const emptyEl = document.getElementById('weight-chart-empty');
+            if (!svgEl) return;
+
+            // Clear previous path content but keep the path element
             const pathLine = document.getElementById('weight-chart-line');
-            if (!svgGroup || !pathLine) return;
 
             const daysMap = { 'week': 7, 'month': 30, 'year': 365 };
             const days = daysMap[currentWeightRange] || 30;
-            let maxW = 0, minW = 9999;
-            let dataPoints = [];
 
+            // Collect data points in order
+            let dataPoints = [];
             let viewD = new Date(viewingDateString + 'T12:00:00');
             for (let i = days - 1; i >= 0; i--) {
                 let tempD = new Date(viewD.getTime() - i * 24 * 60 * 60 * 1000);
                 let dStr = getDateString(tempD);
                 let w = state.weightHistory[dStr];
                 if (w) {
-                    if (w > maxW) maxW = w;
-                    if (w < minW) minW = w;
-                    dataPoints.push({ x: (days - 1 - i), y: w });
+                    dataPoints.push({ slotIndex: days - 1 - i, y: w });
                 }
             }
 
-            const texts = svgGroup.querySelectorAll('text');
-            texts.forEach(t => t.remove());
-
             if (dataPoints.length < 2) {
-                pathLine.setAttribute('d', ''); // Not enough data
-                svgGroup.innerHTML += '<text x="50%" y="50%" fill="var(--text-secondary)" font-size="12" text-anchor="middle" dominant-baseline="middle">Add multiple entries to see trends</text>';
+                pathLine.setAttribute('d', '');
+                if (emptyEl) emptyEl.style.display = 'flex';
                 return;
             }
 
-            const rangeW = maxW - minW || 1;
-            svgGroup.setAttribute('viewBox', `0 0 ${days - 1} 100`);
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            // Find y range with some padding
+            let maxW = Math.max(...dataPoints.map(p => p.y));
+            let minW = Math.min(...dataPoints.map(p => p.y));
+            const yPad = Math.max((maxW - minW) * 0.15, 0.5);
+            maxW += yPad;
+            minW -= yPad;
+            const yRange = maxW - minW;
+
+            // viewBox: 0 0 (days-1) 100 — x mapped 0..days-1, y mapped 0..100 (0=top)
+            svgEl.setAttribute('viewBox', `0 0 ${days - 1} 100`);
 
             let dPath = '';
             dataPoints.forEach((pt, index) => {
-                const px = pt.x;
-                const py = 100 - ((pt.y - minW) / rangeW) * 80 - 10;
-                dPath += (index === 0 ? 'M' : 'L') + `${px},${py} `;
+                const px = pt.slotIndex;
+                const py = 100 - ((pt.y - minW) / yRange) * 100;
+                dPath += (index === 0 ? 'M' : 'L') + `${px.toFixed(2)},${py.toFixed(2)} `;
             });
+
             pathLine.setAttribute('d', dPath.trim());
-            
-            if(!svgGroup.querySelector('path')) {
-                svgGroup.appendChild(pathLine);
-            }
         }
+
 
         // ------ LIFTS TAB LOGIC
         const pplToggles = document.querySelectorAll('.ppl-toggle');

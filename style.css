@@ -680,6 +680,12 @@ body {
     display: flex;
 }
 
+#tab-weight.active {
+    flex: 1;
+    gap: 0;
+    min-height: 0;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(5px); }
     to { opacity: 1; transform: translateY(0); }
@@ -694,8 +700,8 @@ body {
     border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: space-around;
-    padding: 18px 16px;
-    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding: 27px 16px;
+    padding-bottom: max(27px, env(safe-area-inset-bottom));
     z-index: 100;
 }
 
@@ -859,7 +865,7 @@ body {
 
 /* App container bottom padding for fixed nav */
 .app-container {
-    padding-bottom: 80px;
+    padding-bottom: 120px;
     overflow-y: auto;
     max-height: 100vh;
 }
@@ -867,4 +873,6 @@ body {
 .tabs-container {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
