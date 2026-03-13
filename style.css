@@ -258,12 +258,22 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    background: var(--surface-color);
-    border-radius: var(--radius-lg);
-    padding: 24px 16px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    position: relative;
+    padding: 20px 0;
 }
+
+.main-tracker-section::before,
+.main-tracker-section::after {
+    content: '';
+    position: absolute;
+    left: 15%;
+    right: 15%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.main-tracker-section::before { top: 0; }
+.main-tracker-section::after  { bottom: 0; }
 
 .tracker-center {
     display: flex;

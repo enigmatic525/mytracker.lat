@@ -26,10 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let viewingDateString = currentDateString;
 
     let presets = [
-        { id: 1, name: 'Apple', calories: 95 },
-        { id: 2, name: 'Banana', calories: 105 },
-        { id: 3, name: 'Coffee', calories: 5 },
-        { id: 4, name: 'Protein Shake', calories: 150 }
+        { id: 1, name: 'Hamburger', calories: 350 },
+        { id: 2, name: 'Medium Fries', calories: 400 },
+        { id: 3, name: 'Chips', calories: 200 },
+        { id: 4, name: 'Boba Tea', calories: 500 }
     ];
 
     // DOM Elements
@@ -429,49 +429,81 @@ document.addEventListener('DOMContentLoaded', () => {
             caloriesModal.classList.remove('active');
         });
 
-        // Goal Modal
+        // Goal Modal — stepper
+        const goalDisplay = document.getElementById('goal-display');
+        const goalModalNote = document.getElementById('goal-modal-note');
+        let goalVal = state.goal;
+
+        function updateGoalModal() {
+            goalDisplay.textContent = goalVal;
+            const diff = goalVal - state.maintenance;
+            const lbsPerWeek = (diff * 7 / 3500).toFixed(1);
+            const dir = diff > 0 ? 'gain' : diff < 0 ? 'lose' : 'maintain';
+            const absLbs = Math.abs(lbsPerWeek);
+            if (dir === 'maintain') {
+                goalModalNote.textContent = 'Based on your TDEE, you are set to maintain your weight.';
+            } else {
+                goalModalNote.textContent = `Based on your TDEE, you can expect to ${dir} ${absLbs} pounds per week.`;
+            }
+        }
+
         if (metricGoalEl) {
             metricGoalEl.addEventListener('click', () => {
-                goalInput.value = state.goal;
+                goalVal = state.goal;
+                updateGoalModal();
                 goalModal.classList.add('active');
-                setTimeout(() => goalInput.focus(), 100);
             });
         }
+
+        document.getElementById('btn-goal-minus-50').addEventListener('click', () => {
+            goalVal = Math.max(500, goalVal - 50);
+            updateGoalModal();
+        });
+        document.getElementById('btn-goal-plus-50').addEventListener('click', () => {
+            goalVal = Math.min(9000, goalVal + 50);
+            updateGoalModal();
+        });
 
         btnCancelGoal.addEventListener('click', () => {
             goalModal.classList.remove('active');
         });
 
         btnSaveGoal.addEventListener('click', () => {
-            const newGoal = parseInt(goalInput.value);
-            if (!isNaN(newGoal) && newGoal > 0) {
-                state.goal = newGoal;
-                saveState();
-                updateUI();
-            }
+            state.goal = goalVal;
+            saveState();
+            updateUI();
             goalModal.classList.remove('active');
         });
 
-        // Maintenance Modal
+        // TDEE Modal — stepper
+        const maintDisplay = document.getElementById('maint-display');
+        let maintVal = state.maintenance;
+
         if (metricMaintEl) {
             metricMaintEl.addEventListener('click', () => {
-                maintInput.value = state.maintenance;
+                maintVal = state.maintenance;
+                maintDisplay.textContent = maintVal;
                 maintModal.classList.add('active');
-                setTimeout(() => maintInput.focus(), 100);
             });
         }
+
+        document.getElementById('btn-maint-minus-50').addEventListener('click', () => {
+            maintVal = Math.max(500, maintVal - 50);
+            maintDisplay.textContent = maintVal;
+        });
+        document.getElementById('btn-maint-plus-50').addEventListener('click', () => {
+            maintVal = Math.min(9000, maintVal + 50);
+            maintDisplay.textContent = maintVal;
+        });
 
         btnCancelMaint.addEventListener('click', () => {
             maintModal.classList.remove('active');
         });
 
         btnSaveMaint.addEventListener('click', () => {
-            const newMaint = parseInt(maintInput.value);
-            if (!isNaN(newMaint) && newMaint > 0) {
-                state.maintenance = newMaint;
-                saveState();
-                updateUI();
-            }
+            state.maintenance = maintVal;
+            saveState();
+            updateUI();
             maintModal.classList.remove('active');
         });
 
