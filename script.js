@@ -331,8 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let c = state.history[dStr] || 0;
             if (c > maxCals) maxCals = c;
 
-        // Only count days that actually have an entry
-            if (c > 0) {
+        // Only count days that actually have an entry AND are before today
+            if (c > 0 && dStr < currentDateString) {
                 weeklyDiff += (c - state.maintenance);
             }
 
