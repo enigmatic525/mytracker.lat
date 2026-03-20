@@ -105,17 +105,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 tutorialOverlay.style.display = 'flex';
                 tutorialOverlay.classList.remove('hidden');
             }
-            
+
             function closeTutorial() {
                 tutorialOverlay.style.display = 'none';
                 tutorialOverlay.classList.add('hidden');
                 try {
                     localStorage.setItem('trackerTutorialSeen', '1');
-                } catch(e) {}
+                } catch (e) { }
             }
-            
+
             btnTutorialClose.addEventListener('click', closeTutorial);
-            
+
             // Also close if clicking outside the modal content
             tutorialOverlay.addEventListener('click', e => {
                 if (e.target === tutorialOverlay) {
@@ -171,18 +171,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof state.history[currentDateString] !== 'number') {
             state.history[currentDateString] = 0;
         }
-        
+
         applyThemeAndUnits();
     }
 
     function applyThemeAndUnits() {
         document.body.className = `theme-${state.theme}`;
-        
+
         // Update unit labels
         const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
         const weightLabel = document.getElementById('weight-unit-label');
         if (weightLabel) weightLabel.textContent = unitName;
-        
+
         // Settings modal UI sync
         document.querySelectorAll('.theme-color-btn').forEach(btn => {
             btn.classList.toggle('active', btn.getAttribute('data-color') === state.theme);
@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressBarFill.style.boxShadow = '0 0 10px rgba(139, 92, 246, 0.3)';
             }
         }
-        
+
         // Easter Egg: Overload Trigger
         if (cals > 10000) {
             triggerOverload();
@@ -275,10 +275,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderChart();
     }
-    
+
     function triggerOverload() {
         if (window.overloadInterval) return;
-        
+
         window.overloadInterval = setInterval(() => {
             const cals = state.history[viewingDateString] || 0;
             if (cals <= 10000) {
@@ -286,17 +286,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.overloadInterval = null;
                 return;
             }
-            
+
             // Limit to max 80 concurrently to avoid a freezing browser crash
-            if (document.querySelectorAll('.overload-window').length > 80) return;
-            
+            if (document.querySelectorAll('.overload-window').length > 20) return;
+
             const win = document.createElement('div');
             win.className = 'overload-window';
-            
+
             // Randomly position on screen
             win.style.left = (Math.random() * 70) + '%';
             win.style.top = (Math.random() * 80) + '%';
-            
+
             win.innerHTML = `
                 <div class="overload-header">
                     <span><img src="https://win98icons.alexmeub.com/icons/png/msg_error-0.png" style="width: 14px; vertical-align: middle; margin-right: 4px;"> Error</span>
@@ -304,9 +304,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="overload-body">
                     <div style="font-size:32px; margin-bottom: 8px;">⚠️</div>
-                    <p style="color: #fff; font-size: 14px; font-weight: bold; margin: 0; text-shadow: none;">CALORIE OVERLOAD DETECTED</p>
-                    <p style="font-weight: normal; font-size: 11px; margin-top: 8px; color: #fff;">System capacity exceeded. Restrict intake immediately.</p>
-                    <button class="overload-btn" onclick="this.parentElement.parentElement.remove()">OK</button>
+                    <p style="color: #fff; font-size: 14px; font-weight: bold; margin: 0; text-shadow: none;">UNKNOWN FILE DETECTED</p>
+                    <p style="font-weight: normal; font-size: 11px; margin-top: 8px; color: #fff;">Your device's security could be compromised</p>
+                    <button class="overload-btn" onclick="this.parentElement.parentElement.remove()">SCAN NOW</button>
                 </div>
             `;
             document.body.appendChild(win);
@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let c = state.history[dStr] || 0;
             if (c > maxCals) maxCals = c;
 
-        // Only count days that actually have an entry AND are before today
+            // Only count days that actually have an entry AND are before today
             if (c > 0 && dStr < currentDateString) {
                 weeklyDiff += (c - state.maintenance);
             }
@@ -533,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
             goalDisplay.textContent = goalVal;
             const diff = goalVal - state.maintenance;
             const dir = diff > 0 ? 'gain' : diff < 0 ? 'lose' : 'maintain';
-            
+
             if (dir === 'maintain') {
                 goalModalNote.textContent = 'Based on your TDEE, you are set to maintain your weight.';
             } else {
@@ -541,10 +541,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const divisor = isMetric ? 7700 : 3500;
                 const unitName = isMetric ? 'kg' : 'pound';
                 const unitNamePlural = isMetric ? 'kg' : 'pounds';
-                
+
                 const weightPerWeek = Math.abs((diff * 7 / divisor).toFixed(1));
                 const unitString = weightPerWeek == 1.0 ? unitName : unitNamePlural;
-                
+
                 goalModalNote.textContent = `Based on your TDEE, you can expect to ${dir} ${weightPerWeek} ${unitString} per week.`;
             }
         }
@@ -651,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         caloriesCurrentEl.style.transition = 'transform 0.15s ease-out';
-        
+
         setupTabsAndNewFeatures();
     }
 
@@ -763,16 +763,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         btnWeightMinus.addEventListener('click', () => {
             let num = parseFloat(weightInput.value);
-            if(isNaN(num)) num = 0;
+            if (isNaN(num)) num = 0;
             weightInput.value = (num - 0.1).toFixed(1);
         });
-        
+
         btnWeightPlus.addEventListener('click', () => {
             let num = parseFloat(weightInput.value);
-            if(isNaN(num)) num = 0;
+            if (isNaN(num)) num = 0;
             weightInput.value = (num + 0.1).toFixed(1);
         });
-        
+
         btnSaveWeight.addEventListener('click', () => {
             const val = parseFloat(weightInput.value);
             if (!isNaN(val) && val > 0) {
@@ -790,8 +790,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const wKeys = Object.keys(state.weightHistory).sort();
             let lastW = wKeys.length > 0 ? state.weightHistory[wKeys[wKeys.length - 1]] : 150.0;
             weightInput.value = state.weightHistory[viewingDateString]
-                             || state.weightHistory[getTodayDateString()]
-                             || lastW;
+                || state.weightHistory[getTodayDateString()]
+                || lastW;
 
             const svgEl = document.getElementById('weight-chart-svg');
             const emptyEl = document.getElementById('weight-chart-empty');
@@ -860,7 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Sort points by slot to pick labels
                 const sortedPoints = [...dataPoints].sort((a, b) => a.slotIndex - b.slotIndex);
-                
+
                 // Pick up to 6 labels
                 const labelCount = Math.min(6, sortedPoints.length);
                 const labelIndices = new Set();
@@ -871,10 +871,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 labelIndices.forEach(idx => {
                     const pt = sortedPoints[idx];
                     const leftPct = ((pt.slotIndex - minSlot) / xRange) * 100;
-                    
+
                     const lbl = document.createElement('div');
                     lbl.style.cssText = `position: absolute; left: ${leftPct}%; transform: translateX(calc(-50% + ${leftPct === 0 ? '10px' : leftPct >= 99 ? '-10px' : '0px'})); font-size: 10px; color: var(--text-secondary); white-space: nowrap;`;
-                    
+
                     const fmt = currentWeightRange === 'year'
                         ? pt.date.toLocaleDateString('en-US', { month: 'short' })
                         : pt.date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
@@ -886,10 +886,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // --- SVG path
             svgEl.setAttribute('viewBox', `0 0 100 100`);
             let dPath = '';
-            
+
             // Sort to ensure line draws left to right
             const pathPoints = [...dataPoints].sort((a, b) => a.slotIndex - b.slotIndex);
-            
+
             pathPoints.forEach((pt, index) => {
                 const px = ((pt.slotIndex - minSlot) / xRange) * 100;
                 const py = 100 - ((pt.y - minW) / yRange) * 100;
@@ -906,7 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const liftDetailView = document.getElementById('lift-detail-view');
         const btnBackLifts = document.getElementById('btn-back-lifts');
         const liftDetailTitle = document.getElementById('lift-detail-title');
-        
+
         let currentPPL = 'push';
         let currentLiftId = null;
 
@@ -931,9 +931,9 @@ document.addEventListener('DOMContentLoaded', () => {
             filteredLifts.forEach(lift => {
                 const el = document.createElement('div');
                 el.className = 'lift-item';
-                
+
                 let last1RM = '--';
-                if(state.liftSets[lift.id] && state.liftSets[lift.id].length > 0) {
+                if (state.liftSets[lift.id] && state.liftSets[lift.id].length > 0) {
                     last1RM = state.liftSets[lift.id][state.liftSets[lift.id].length - 1].est1RM + ' lbs';
                 }
                 el.innerHTML = `
@@ -993,7 +993,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function renderLiftDetail() {
             liftHistoryList.innerHTML = '';
             const sets = state.liftSets[currentLiftId] || [];
-            
+
             const todaySets = sets.filter(s => s.date === viewingDateString);
             if (todaySets.length === 0) {
                 liftHistoryList.innerHTML = '<div style="font-size: 13px; color: var(--text-secondary);">No sets recorded today.</div>';
@@ -1021,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const svgGroup = document.getElementById('lift-chart-svg');
             const pathLine = document.getElementById('lift-chart-line');
-            if(!svgGroup || !pathLine) return;
+            if (!svgGroup || !pathLine) return;
 
             const texts = svgGroup.querySelectorAll('text');
             texts.forEach(t => t.remove());
@@ -1040,7 +1040,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const rangeR = max1RM - min1RM || 1;
             svgGroup.setAttribute('viewBox', `0 0 ${sets.length - 1} 100`);
-            
+
             let dPath = '';
             sets.forEach((set, index) => {
                 const px = index;
@@ -1048,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 dPath += (index === 0 ? 'M' : 'L') + `${px},${py} `;
             });
             pathLine.setAttribute('d', dPath.trim());
-            if(!svgGroup.querySelector('path')) {
+            if (!svgGroup.querySelector('path')) {
                 svgGroup.appendChild(pathLine);
             }
         }
@@ -1057,7 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const liftModal = document.getElementById('lift-modal');
         const liftNameInput = document.getElementById('lift-name-input');
         const liftGroupInput = document.getElementById('lift-group-input');
-        
+
         document.getElementById('btn-add-lift').addEventListener('click', () => {
             liftNameInput.value = '';
             liftGroupInput.value = currentPPL;
@@ -1088,7 +1088,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (e.target === liftModal) liftModal.classList.remove('active');
             });
         }
-        
+
         // Initial tab render
         renderLiftsTab();
     }
