@@ -230,10 +230,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const metaTheme = document.querySelector('meta[name="theme-color"]');
         if (metaTheme) metaTheme.content = state.theme === 'dark' ? '#0b0b0d' : '#ffffff';
 
-        const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
-        const weightLabel = document.getElementById('weight-unit-label');
-        if (weightLabel) weightLabel.textContent = unitName;
-
         document.querySelectorAll('.theme-mode-toggle').forEach((btn) => {
             const isActive = btn.getAttribute('data-mode') === state.theme;
             btn.classList.toggle('active', isActive);
@@ -501,6 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const weightTab = document.getElementById('tab-weight');
         if (weightTab && weightTab.classList.contains('active')) {
             renderWeightTab();
+            refreshWeightSheet();
         }
     }
 
@@ -553,35 +550,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderWeightTab() {
-        const weightInput = document.getElementById('weight-input');
         const svgEl = document.getElementById('weight-chart-svg');
-        if (!weightInput || !svgEl) return;
-
-        // Populate the input with the viewing day's entry, falling back to the most
-        // recent known weight so a new day starts from a sensible number.
-        const wKeys = Object.keys(state.weightHistory).sort();
-        const lastW = wKeys.length > 0 ? state.weightHistory[wKeys[wKeys.length - 1]] : 150;
-        const viewingW = state.weightHistory[viewingDateString];
-        const shownW = (typeof viewingW === 'number')
-            ? viewingW
-            : (state.weightHistory[getTodayDateString()] || lastW);
-        weightInput.value = shownW.toFixed(1); // always show one decimal place
-
-        const logDateLabel = document.getElementById('weight-log-date-label');
-        if (logDateLabel) {
-            logDateLabel.textContent = viewingDateString === currentDateString
-                ? 'Today'
-                : new Date(viewingDateString + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        }
-        const btnSave = document.getElementById('btn-save-weight');
-        if (btnSave) {
-            btnSave.textContent = (typeof viewingW === 'number') ? 'Update' : 'Save';
-        }
+        if (!svgEl) return;
 
         const emptyEl = document.getElementById('weight-chart-empty');
         const xAxisEl = document.getElementById('weight-x-axis');
         const yAxisEl = document.getElementById('weight-y-axis');
-        const dotsGroup = document.getElementById('weight-chart-dots');
+        const dotsEl = document.getElementById('weight-chart-dots');
         const pathLine = document.getElementById('weight-chart-line');
         const maLineEl = document.getElementById('weight-ma-line');
         const projLineEl = document.getElementById('weight-projection-line');
@@ -605,7 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const allowProjection = trend && currentWeightRange !== 'year';
         let extraDays = 0;
         if (allowProjection) {
-            extraDays = Math.min(14, days);
+            // Modest forward window (~a quarter of the range) so the real data
+            // still dominates the chart instead of being squeezed left.
+            extraDays = Math.round(days / 4);
             for (let k = 1; k <= extraDays; k++) {
                 const fD = new Date(viewD.getTime() + k * 86400000);
                 allSlots.push({ slotIndex: days - 1 + k, date: fD, dateStr: getDateString(fD), weight: null, future: true });
@@ -653,10 +630,11 @@ document.addEventListener('DOMContentLoaded', () => {
             summaryEl.style.display = txt ? '' : 'none';
         }
 
-        // Reset chart elements
+        // Reset chart elements. dotsEl also contains the persistent scrubber dot,
+        // so clear only the data dots, not the whole container.
         if (xAxisEl) xAxisEl.innerHTML = '';
         if (yAxisEl) yAxisEl.innerHTML = '';
-        if (dotsGroup) dotsGroup.innerHTML = '';
+        if (dotsEl) dotsEl.querySelectorAll('.weight-dot').forEach((d) => d.remove());
         if (maLineEl) maLineEl.setAttribute('d', '');
         if (projLineEl) projLineEl.style.display = 'none';
 
@@ -682,12 +660,15 @@ document.addEventListener('DOMContentLoaded', () => {
         minW -= yPad;
         const yRange = maxW - minW;
 
-        // Y-axis: 4 ticks
+        // Y-axis: 4 ticks, positioned by exact % so they line up with the SVG.
         if (yAxisEl) {
             for (let t = 0; t < 4; t++) {
                 const val = maxW - (t / 3) * yRange;
                 const lbl = document.createElement('div');
-                lbl.style.cssText = 'font-size:10px; color:var(--text-secondary); line-height:1; font-variant-numeric:tabular-nums;';
+                lbl.style.top = `${(t / 3) * 100}%`;
+                // Keep the top and bottom labels fully inside the plot box.
+                if (t === 0) lbl.style.transform = 'translateY(0)';
+                else if (t === 3) lbl.style.transform = 'translateY(-100%)';
                 lbl.textContent = val.toFixed(1);
                 yAxisEl.appendChild(lbl);
             }
@@ -702,6 +683,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const slot = allSlots[Math.min(slotIdx, allSlots.length - 1)];
                 const lbl = document.createElement('div');
                 lbl.className = 'chart-label';
+                // Position at the slot's true x — must match how the dots are placed.
+                lbl.style.left = `${(slotIdx / xRange) * 100}%`;
                 lbl.textContent = currentWeightRange === 'year'
                     ? slot.date.toLocaleDateString('en-US', { month: 'short' })
                     : slot.date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
@@ -709,8 +692,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Plot
-        svgEl.setAttribute('viewBox', '0 0 100 100');
+        // Plot. The SVG viewBox is a fixed 0-100 square (set in the HTML) and
+        // stretches to the chart box; all coordinates below are in that 0-100 space.
         const svgPts = dataPoints.map((pt) => ({
             x: (pt.slotIndex / xRange) * 100,
             y: 100 - ((pt.weight - minW) / yRange) * 100,
@@ -749,20 +732,138 @@ document.addEventListener('DOMContentLoaded', () => {
             projLineEl.style.display = '';
         }
 
-        // Data dots (interaction is handled by the invisible overlay rect)
-        if (dotsGroup) {
+        // Data dots — HTML divs positioned by %, so they stay perfectly round
+        // regardless of the chart's (wide, short) aspect ratio. Pointer events
+        // are handled by the overlay layer on top.
+        if (dotsEl) {
             svgPts.forEach((pt) => {
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', pt.x.toFixed(2));
-                circle.setAttribute('cy', pt.y.toFixed(2));
-                circle.setAttribute('r', '2.2');
-                circle.setAttribute('fill', 'var(--accent-primary)');
-                circle.setAttribute('stroke', 'var(--bg-color)');
-                circle.setAttribute('stroke-width', '1');
-                circle.style.vectorEffect = 'non-scaling-stroke';
-                dotsGroup.appendChild(circle);
+                const dot = document.createElement('div');
+                dot.className = 'weight-dot';
+                dot.style.left = `${pt.x}%`;
+                dot.style.top = `${pt.y}%`;
+                dotsEl.appendChild(dot);
             });
         }
+    }
+
+    // ===== Weight entry sheet (horizontal scrolling row of day cells) =====
+    function buildWeightCell(dateStr) {
+        const d = new Date(dateStr + 'T12:00:00');
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'weight-cell';
+        cell.dataset.date = dateStr;
+        if (dateStr === currentDateString) cell.classList.add('today');
+        const w = state.weightHistory[dateStr];
+        if (typeof w === 'number') cell.classList.add('filled');
+
+        const dateLbl = document.createElement('span');
+        dateLbl.className = 'weight-cell-date';
+        dateLbl.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const valLbl = document.createElement('span');
+        valLbl.className = 'weight-cell-val';
+        valLbl.textContent = typeof w === 'number' ? w.toFixed(1) : '+';
+
+        cell.appendChild(dateLbl);
+        cell.appendChild(valLbl);
+        return cell;
+    }
+
+    // Builds the initial cells, wires "extend into the past on scroll", and
+    // delegates cell clicks to the entry modal. Runs once at startup.
+    function setupWeightSheet() {
+        const sheet = document.getElementById('weight-sheet');
+        if (!sheet) return;
+        const today = new Date(currentDateString + 'T12:00:00');
+        let oldest = new Date(today.getTime() - 44 * 86400000); // start with ~6 weeks of history
+
+        for (let t = oldest.getTime(); t <= today.getTime(); t += 86400000) {
+            sheet.appendChild(buildWeightCell(getDateString(new Date(t))));
+        }
+
+        // The row "keeps extending": when scrolled near the left edge, prepend
+        // another chunk of older days and bump scrollLeft by the width added so
+        // the viewport stays put instead of jumping.
+        let extending = false;
+        sheet.addEventListener('scroll', () => {
+            if (extending || sheet.scrollLeft > 80) return;
+            extending = true;
+            const prevWidth = sheet.scrollWidth;
+            const frag = document.createDocumentFragment();
+            for (let i = 30; i >= 1; i--) {
+                frag.appendChild(buildWeightCell(getDateString(new Date(oldest.getTime() - i * 86400000))));
+            }
+            oldest = new Date(oldest.getTime() - 30 * 86400000);
+            sheet.insertBefore(frag, sheet.firstChild);
+            sheet.scrollLeft += sheet.scrollWidth - prevWidth;
+            extending = false;
+        });
+
+        // Event delegation: one listener handles taps on any cell.
+        sheet.addEventListener('click', (e) => {
+            const cell = e.target.closest('.weight-cell');
+            if (cell) openWeightEntryModal(cell.dataset.date);
+        });
+    }
+
+    // Refreshes the value/state of already-rendered cells in place. A full
+    // rebuild would reset the scroll position, so data changes go through here.
+    function refreshWeightSheet() {
+        const sheet = document.getElementById('weight-sheet');
+        if (!sheet) return;
+        sheet.querySelectorAll('.weight-cell').forEach((cell) => {
+            const w = state.weightHistory[cell.dataset.date];
+            cell.classList.toggle('filled', typeof w === 'number');
+            const valLbl = cell.querySelector('.weight-cell-val');
+            if (valLbl) valLbl.textContent = typeof w === 'number' ? w.toFixed(1) : '+';
+        });
+    }
+
+    function weightSheetScrollToEnd() {
+        const sheet = document.getElementById('weight-sheet');
+        if (!sheet) return;
+        // Defer to the next frame: when the tab was hidden, scrollWidth is 0
+        // until layout runs.
+        requestAnimationFrame(() => { sheet.scrollLeft = sheet.scrollWidth; });
+    }
+
+    // Opens the shared number-entry modal for a given day. Empty value clears
+    // the entry; otherwise it must be within the sane weight bounds.
+    function openWeightEntryModal(dateStr) {
+        const modal = document.getElementById('weight-edit-modal');
+        const input = document.getElementById('weight-edit-input');
+        const title = document.getElementById('weight-edit-modal-title');
+        if (!modal || !input) return;
+        const label = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (title) title.textContent = dateStr === currentDateString ? 'Log weight · Today' : `Log weight · ${label}`;
+        const existing = state.weightHistory[dateStr];
+        input.value = typeof existing === 'number' ? existing : '';
+        modal._editDateStr = dateStr;
+        modal.classList.add('active');
+        setTimeout(() => input.focus(), 100);
+    }
+
+    // Replaces the browsers' native number-input spinners with typeface-consistent,
+    // larger, keyboard-accessible -/+ buttons. Each button steps by the input's
+    // `step` attribute (default 1) and never goes below zero. The native arrow-key
+    // stepping on the input still works too.
+    function setupSteppers() {
+        document.querySelectorAll('.stepper').forEach((stepper) => {
+            const input = stepper.querySelector('input');
+            if (!input) return;
+            const step = parseFloat(input.getAttribute('step')) || 1;
+            const decimals = (String(step).split('.')[1] || '').length;
+            stepper.querySelectorAll('.stepper-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const dir = parseFloat(btn.dataset.dir) || 0;
+                    let val = parseFloat(input.value);
+                    if (isNaN(val)) val = 0;
+                    val = Math.max(0, val + dir * step);
+                    // toFixed rounds for display and absorbs float drift (0.1 + 0.1 + 0.1).
+                    input.value = decimals > 0 ? val.toFixed(decimals) : String(Math.round(val));
+                });
+            });
+        });
     }
 
     // ===== Event wiring =====
@@ -911,6 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         caloriesCurrentEl.style.transition = 'transform 0.15s ease-out';
+        setupSteppers();
         setupTabsSettingsAndWeight();
     }
 
@@ -942,19 +1044,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const newPane = document.getElementById(navTabs[clamped].getAttribute('data-target'));
             newPane.classList.add('active', dir === 'right' ? 'slide-in-right' : 'slide-in-left');
 
-            if (navTabs[clamped].getAttribute('data-target') === 'tab-weight') renderWeightTab();
+            if (navTabs[clamped].getAttribute('data-target') === 'tab-weight') {
+                renderWeightTab();
+                refreshWeightSheet();
+                weightSheetScrollToEnd();
+            }
         }
 
         navTabs.forEach((tab, i) => tab.addEventListener('click', () => switchToTab(i)));
 
-        // Horizontal swipe to change tabs
+        // Horizontal swipe to change tabs. Ignored when the swipe starts inside
+        // the weight sheet — that is itself a horizontal scroller, so a swipe
+        // there should scroll the row, not flip tabs.
         let touchStartX = 0;
         let touchStartY = 0;
+        let touchInScroller = false;
         document.addEventListener('touchstart', (e) => {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
+            touchInScroller = !!(e.target.closest && e.target.closest('#weight-sheet'));
         }, { passive: true });
         document.addEventListener('touchend', (e) => {
+            if (touchInScroller) return;
             const dx = e.changedTouches[0].clientX - touchStartX;
             const dy = e.changedTouches[0].clientY - touchStartY;
             if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
@@ -997,22 +1108,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Weight tab input controls
-        const weightInput = document.getElementById('weight-input');
-        const btnSaveWeight = document.getElementById('btn-save-weight');
+        // Weight tab: chart range toggles + the scrolling entry sheet
         const weightChartToggles = document.querySelectorAll('#weight-chart-toggles .chart-toggle');
-
-        function nudgeWeight(delta) {
-            let num = parseFloat(weightInput.value);
-            if (isNaN(num)) num = 0;
-            num = Math.min(MAX_WEIGHT, Math.max(0, num + delta));
-            weightInput.value = num.toFixed(1);
-        }
-        document.getElementById('btn-weight-minus').addEventListener('click', () => nudgeWeight(-0.1));
-        document.getElementById('btn-weight-plus').addEventListener('click', () => nudgeWeight(0.1));
-        document.getElementById('btn-weight-minus-1').addEventListener('click', () => nudgeWeight(-1));
-        document.getElementById('btn-weight-plus-1').addEventListener('click', () => nudgeWeight(1));
-
         weightChartToggles.forEach((t) => {
             t.addEventListener('click', () => {
                 weightChartToggles.forEach((b) => b.classList.remove('active'));
@@ -1022,49 +1119,39 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        btnSaveWeight.addEventListener('click', () => {
-            const val = parseFloat(weightInput.value);
-            if (!isNaN(val) && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
-                state.weightHistory[viewingDateString] = val;
-                saveState();
-                renderWeightTab();
-                btnSaveWeight.textContent = 'Saved';
-                setTimeout(() => renderWeightTab(), 1500);
-            }
-        });
-
+        setupWeightSheet();
         setupWeightChartInteraction();
     }
 
     // Chart scrubber + per-point edit/delete popup.
     function setupWeightChartInteraction() {
         const chartOverlay = document.getElementById('weight-chart-overlay');
-        const scrubberGroup = document.getElementById('weight-scrubber');
         const scrubberLine = document.getElementById('weight-scrubber-line');
         const scrubberDot = document.getElementById('weight-scrubber-dot');
         const scrubberLabel = document.getElementById('weight-scrubber-label');
-        const svgEl = document.getElementById('weight-chart-svg');
         const dotPopup = document.getElementById('weight-dot-popup');
         const dotEditBtn = document.getElementById('weight-dot-edit-btn');
         const dotDeleteBtn = document.getElementById('weight-dot-delete-btn');
         const weightEditModal = document.getElementById('weight-edit-modal');
         const weightEditInput = document.getElementById('weight-edit-input');
-        const weightEditTitle = document.getElementById('weight-edit-modal-title');
         const btnSaveWeightEdit = document.getElementById('btn-save-weight-edit');
         const btnCancelWeightEdit = document.getElementById('btn-cancel-weight-edit');
 
         function updateScrubber(clientX) {
             if (!currentSvgPts || currentSvgPts.length === 0) return null;
-            const svgRect = svgEl.getBoundingClientRect();
-            const svgX = ((clientX - svgRect.left) / svgRect.width) * 100;
+            // The overlay shares the chart drawing box, so its rect maps 1:1 to
+            // the 0-100 coordinate space the points are stored in.
+            const rect = chartOverlay.getBoundingClientRect();
+            const svgX = ((clientX - rect.left) / rect.width) * 100;
             const nearest = currentSvgPts.reduce((prev, curr) =>
                 Math.abs(curr.x - svgX) < Math.abs(prev.x - svgX) ? curr : prev
             );
             scrubberLine.setAttribute('x1', nearest.x.toFixed(2));
             scrubberLine.setAttribute('x2', nearest.x.toFixed(2));
-            scrubberDot.setAttribute('cx', nearest.x.toFixed(2));
-            scrubberDot.setAttribute('cy', nearest.y.toFixed(2));
-            scrubberGroup.style.display = '';
+            scrubberLine.style.display = '';
+            scrubberDot.style.left = `${nearest.x}%`;
+            scrubberDot.style.top = `${nearest.y}%`;
+            scrubberDot.style.display = '';
             if (scrubberLabel) {
                 const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
                 const label = nearest.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -1073,7 +1160,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return nearest;
         }
         function hideScrubber() {
-            if (scrubberGroup) scrubberGroup.style.display = 'none';
+            if (scrubberLine) scrubberLine.style.display = 'none';
+            if (scrubberDot) scrubberDot.style.display = 'none';
             if (scrubberLabel) scrubberLabel.textContent = '';
         }
         function closeDotPopup() {
@@ -1121,14 +1209,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dotEditBtn) {
             dotEditBtn.addEventListener('click', () => {
                 if (!activeDotDateStr) return;
-                const val = state.weightHistory[activeDotDateStr];
-                const label = new Date(activeDotDateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                if (weightEditTitle) weightEditTitle.textContent = `Edit · ${label}`;
-                if (weightEditInput) weightEditInput.value = val !== undefined ? val : '';
-                weightEditModal._editDateStr = activeDotDateStr;
+                const dateStr = activeDotDateStr;
                 closeDotPopup();
-                weightEditModal.classList.add('active');
-                setTimeout(() => weightEditInput && weightEditInput.focus(), 100);
+                openWeightEntryModal(dateStr); // shared modal — same one the sheet uses
             });
         }
 
@@ -1169,6 +1252,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     reset();
                     delete state.weightHistory[dateStr];
                     saveState();
+                    refreshWeightSheet();
                     renderWeightTab();
                 }
                 function cancelDelete(e) {
@@ -1184,10 +1268,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnSaveWeightEdit) {
             btnSaveWeightEdit.addEventListener('click', () => {
                 const dateStr = weightEditModal._editDateStr;
-                const val = parseFloat(weightEditInput.value);
-                if (dateStr && !isNaN(val) && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
-                    state.weightHistory[dateStr] = val;
+                if (dateStr) {
+                    const raw = weightEditInput.value.trim();
+                    if (raw === '') {
+                        delete state.weightHistory[dateStr]; // empty input clears the entry
+                    } else {
+                        const val = parseFloat(raw);
+                        if (!isNaN(val) && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
+                            state.weightHistory[dateStr] = val;
+                        }
+                    }
                     saveState();
+                    refreshWeightSheet();
                     renderWeightTab();
                 }
                 weightEditModal.classList.remove('active');

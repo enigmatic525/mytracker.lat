@@ -16,7 +16,7 @@
     <link rel="apple-touch-icon" href="myicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -154,28 +154,30 @@
                         <button class="chart-toggle active" data-range="month">M</button>
                         <button class="chart-toggle" data-range="year">Y</button>
                     </div>
-                    <div class="chart-container" style="flex-direction: row; gap: 4px; margin-top: 4px;">
-                        <!-- Y-axis -->
-                        <div id="weight-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding-right: 4px; min-width: 36px; padding-bottom: 20px;"></div>
-                        <!-- SVG + x-axis -->
-                        <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
-                            <div class="chart-plot-area" style="position: relative; flex: 1;">
-                                <svg id="weight-chart-svg" width="100%" height="100%" preserveAspectRatio="none" style="display: block; position: absolute; inset: 0;">
-                                    <path id="weight-ma-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity="0.35"/>
-                                    <path id="weight-projection-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="1.5" stroke-dasharray="2,2" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.55" style="display:none;"/>
-                                    <path id="weight-chart-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-                                    <g id="weight-chart-dots"></g>
-                                    <g id="weight-scrubber" style="display:none;">
-                                        <line id="weight-scrubber-line" x1="50" y1="0" x2="50" y2="100" stroke="var(--text-secondary)" stroke-width="0.5" vector-effect="non-scaling-stroke" opacity="0.6"/>
-                                        <circle id="weight-scrubber-dot" cx="50" cy="50" r="3.5" fill="var(--accent-primary)" stroke="var(--bg-color)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                                    </g>
-                                    <rect id="weight-chart-overlay" x="0" y="0" width="100" height="100" fill="transparent" style="cursor: crosshair;"/>
-                                </svg>
-                                <div id="weight-scrubber-label" style="position: absolute; top: 0; left: 0; font-size: 12px; color: var(--text-secondary); font-weight: var(--font-weight-medium); pointer-events: none; z-index: 5; white-space: nowrap;"></div>
-                                <div id="weight-chart-empty" style="display: none; position: absolute; inset: 0; align-items: center; justify-content: center; font-size: 13px; color: var(--text-secondary);">Add multiple entries to see trends</div>
+                    <!-- CSS Grid: col 1 = y-axis gutter, col 2 = chart area; row 1 = chart,
+                         row 2 = x-axis. The area and x-axis both sit in column 2, and the
+                         y-axis shares row 1 with the area — so all four pieces stay aligned
+                         by construction, with no hand-computed offsets to drift apart. -->
+                    <div class="weight-chart">
+                        <div class="weight-chart-yaxis" id="weight-y-axis"></div>
+                        <div class="weight-chart-area">
+                            <!-- SVG holds only the lines (they stretch cleanly). Dots are
+                                 HTML so they stay circular at any aspect ratio. SVG, dot
+                                 layer and overlay all fill this box (inset:0) → one space. -->
+                            <svg id="weight-chart-svg" class="weight-chart-svg" preserveAspectRatio="none" viewBox="0 0 100 100">
+                                <path id="weight-ma-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" opacity="0.35"/>
+                                <path id="weight-projection-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="1.5" stroke-dasharray="3,3" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity="0.55" style="display:none;"/>
+                                <path id="weight-chart-line" d="" fill="none" stroke="var(--accent-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+                                <line id="weight-scrubber-line" x1="0" y1="0" x2="0" y2="100" stroke="var(--text-secondary)" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0.5" style="display:none;"/>
+                            </svg>
+                            <div class="weight-chart-dots" id="weight-chart-dots">
+                                <div class="weight-chart-scrubdot" id="weight-scrubber-dot" style="display:none;"></div>
                             </div>
-                            <div class="chart-labels-row" id="weight-x-axis"></div>
+                            <div class="weight-chart-label" id="weight-scrubber-label"></div>
+                            <div class="weight-chart-empty" id="weight-chart-empty">Log at least 2 days to see your trend</div>
+                            <div class="weight-chart-overlay" id="weight-chart-overlay"></div>
                         </div>
+                        <div class="chart-labels-row" id="weight-x-axis"></div>
                     </div>
                 </section>
 
@@ -209,23 +211,11 @@
                         </div>
                     </section>
 
-                    <!-- Main Tracker Section -->
-                    <section class="main-tracker-section">
-                        <button class="btn btn-icon-text outer-btn" id="btn-weight-minus-1" aria-label="Subtract 1">-1</button>
-                        <button class="btn btn-icon-text inner-btn" id="btn-weight-minus" aria-label="Subtract 0.1">-.1</button>
-
-                        <div class="tracker-center" style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 165px;">
-                            <div style="display: flex; align-items: baseline; justify-content: center;">
-                                <input type="number" id="weight-input" step="0.1" inputmode="decimal" value="150.0"
-                                    style="font-family: var(--font-mono); font-size: 48px; font-weight: 300; line-height: 1; background: transparent; color: var(--text-primary); border: none; text-align: right; width: 130px; outline: none; appearance: textfield; -moz-appearance: textfield; padding: 0;">
-                                <span id="weight-unit-label" style="font-size: 16px; color: var(--text-secondary); margin-left: 4px; padding-bottom: 4px;">lbs</span>
-                            </div>
-                            <div id="weight-log-date-label" style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Today</div>
-                            <button class="btn btn-primary" id="btn-save-weight" style="width: 100%; margin-top: 6px; font-size: 13px; padding: 8px 12px;">Save</button>
+                    <!-- Weight entry sheet: a horizontal scrolling row of day cells -->
+                    <section class="weight-sheet-section">
+                        <div class="weight-sheet-wrap">
+                            <div class="weight-sheet" id="weight-sheet"><!-- cells injected by JS --></div>
                         </div>
-
-                        <button class="btn btn-icon-text inner-btn" id="btn-weight-plus" aria-label="Add 0.1">+.1</button>
-                        <button class="btn btn-icon-text outer-btn" id="btn-weight-plus-1" aria-label="Add 1">+1</button>
                     </section>
                 </div>
             </div>
@@ -249,7 +239,11 @@
     <div class="modal-overlay" id="weight-edit-modal">
         <div class="modal-content">
             <h3 id="weight-edit-modal-title">Edit entry</h3>
-            <input type="number" id="weight-edit-input" class="modal-input" step="0.1" inputmode="decimal" placeholder="e.g. 165.0">
+            <div class="stepper">
+                <button type="button" class="stepper-btn" data-dir="-1" aria-label="Decrease weight">&minus;</button>
+                <input type="number" id="weight-edit-input" class="modal-input" step="0.1" inputmode="decimal" placeholder="e.g. 165.0">
+                <button type="button" class="stepper-btn" data-dir="1" aria-label="Increase weight">+</button>
+            </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel-weight-edit">Cancel</button>
                 <button class="btn btn-primary" id="btn-save-weight-edit">Save</button>
@@ -298,7 +292,11 @@
     <div class="modal-overlay" id="calories-modal">
         <div class="modal-content">
             <h3>Set current calories</h3>
-            <input type="number" id="calories-input" class="modal-input" inputmode="numeric" placeholder="e.g. 1500">
+            <div class="stepper">
+                <button type="button" class="stepper-btn" data-dir="-1" aria-label="Decrease calories">&minus;</button>
+                <input type="number" id="calories-input" class="modal-input" inputmode="numeric" placeholder="e.g. 1500">
+                <button type="button" class="stepper-btn" data-dir="1" aria-label="Increase calories">+</button>
+            </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel-calories">Cancel</button>
                 <button class="btn btn-primary" id="btn-save-calories">Save</button>
@@ -345,7 +343,11 @@
         <div class="modal-content">
             <h3>Add new preset</h3>
             <input type="text" id="preset-name-input" class="modal-input" maxlength="40" placeholder="Name (e.g. Apple)">
-            <input type="number" id="preset-cal-input" class="modal-input" inputmode="numeric" placeholder="Calories (e.g. 95)">
+            <div class="stepper">
+                <button type="button" class="stepper-btn" data-dir="-1" aria-label="Decrease calories">&minus;</button>
+                <input type="number" id="preset-cal-input" class="modal-input" inputmode="numeric" placeholder="Calories (e.g. 95)">
+                <button type="button" class="stepper-btn" data-dir="1" aria-label="Increase calories">+</button>
+            </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel-preset">Cancel</button>
                 <button class="btn btn-primary" id="btn-save-preset">Save</button>
