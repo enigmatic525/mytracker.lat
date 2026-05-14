@@ -1,53 +1,16 @@
-const CACHE_NAME = 'calorie-tracker-v4';
-const urlsToCache = [
-    './',
-    './index.html',
-    './style.css',
-    './script.js',
-    './manifest.json',
-    './myicon.png'
-];
+// Self-destructing service worker.
+// The previous version cached index.html/script.js/style.css aggressively,
+// which served stale files during development. This version installs, purges
+// every cache, unregisters itself, and reloads open tabs so the browser goes
+// straight to the network from now on. There is intentionally no fetch handler.
+self.addEventListener('install', () => self.skipWaiting());
 
-self.addEventListener('install', event => {
-    // Force the waiting service worker to become the active service worker.
-    self.skipWaiting();
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => {
-                return cache.addAll(urlsToCache);
-            })
-    );
-});
-
-self.addEventListener('activate', event => {
-    // Delete all older overlapping caches
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cacheName => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        }).then(() => {
-            self.clients.claim(); // Take control immediately
-        })
-    );
-});
-
-self.addEventListener('fetch', event => {
-    // Network First, Cache Fallback Strategy
-    event.respondWith(
-        fetch(event.request).then(response => {
-            // Update the cache with the newest version from the network
-            return caches.open(CACHE_NAME).then(cache => {
-                cache.put(event.request, response.clone());
-                return response;
-            });
-        }).catch(() => {
-            // If offline or network fails, fallback to cache
-            return caches.match(event.request);
-        })
-    );
+self.addEventListener('activate', (event) => {
+    event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+        await self.registration.unregister();
+        const clients = await self.clients.matchAll({ type: 'window' });
+        clients.forEach((client) => client.navigate(client.url));
+    })());
 });
