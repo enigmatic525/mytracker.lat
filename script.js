@@ -54,6 +54,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeDotDateStr = null;
     let currentSvgPts = [];
 
+    // Bounds of the day range currently built into the weight sheet. The sheet
+    // grows past these as you scroll or jump to an out-of-range date.
+    let weightSheetOldest = null;
+    let weightSheetLatest = null;
+
     // ===== DOM references =====
     const dateEl = document.getElementById('current-date');
     const dayLabelEl = document.getElementById('day-label');
@@ -498,6 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (weightTab && weightTab.classList.contains('active')) {
             renderWeightTab();
             refreshWeightSheet();
+            weightSheetScrollToDate(viewingDateString);
         }
     }
 
@@ -754,6 +760,9 @@ document.addEventListener('DOMContentLoaded', () => {
         cell.className = 'weight-cell';
         cell.dataset.date = dateStr;
         if (dateStr === currentDateString) cell.classList.add('today');
+        if (dateStr === viewingDateString) cell.classList.add('viewing');
+        // Future days are shown but greyed out — you can't log a weight that hasn't happened.
+        if (dateStr > currentDateString) cell.classList.add('future');
         const w = state.weightHistory[dateStr];
         if (typeof w === 'number') cell.classList.add('filled');
 
@@ -769,62 +778,114 @@ document.addEventListener('DOMContentLoaded', () => {
         return cell;
     }
 
-    // Builds the initial cells, wires "extend into the past on scroll", and
-    // delegates cell clicks to the entry modal. Runs once at startup.
+    // Builds the initial cells, wires "extend on scroll" in both directions, and
+    // delegates cell clicks to the entry modal. Runs once at startup. The row
+    // spans past *and* future days; future cells are greyed out and inert.
     function setupWeightSheet() {
         const sheet = document.getElementById('weight-sheet');
         if (!sheet) return;
         const today = new Date(currentDateString + 'T12:00:00');
-        let oldest = new Date(today.getTime() - 44 * 86400000); // start with ~6 weeks of history
+        weightSheetOldest = new Date(today.getTime() - 44 * 86400000); // ~6 weeks of history
+        weightSheetLatest = new Date(today.getTime() + 14 * 86400000); // 2 weeks ahead
 
-        for (let t = oldest.getTime(); t <= today.getTime(); t += 86400000) {
+        for (let t = weightSheetOldest.getTime(); t <= weightSheetLatest.getTime(); t += 86400000) {
             sheet.appendChild(buildWeightCell(getDateString(new Date(t))));
         }
 
-        // The row "keeps extending": when scrolled near the left edge, prepend
-        // another chunk of older days and bump scrollLeft by the width added so
-        // the viewport stays put instead of jumping.
+        // The row "keeps extending" at both ends. Near the left edge, prepend
+        // older days and bump scrollLeft by the width added so the viewport
+        // stays put; near the right edge, append future days.
         let extending = false;
         sheet.addEventListener('scroll', () => {
-            if (extending || sheet.scrollLeft > 80) return;
-            extending = true;
-            const prevWidth = sheet.scrollWidth;
-            const frag = document.createDocumentFragment();
-            for (let i = 30; i >= 1; i--) {
-                frag.appendChild(buildWeightCell(getDateString(new Date(oldest.getTime() - i * 86400000))));
+            if (extending) return;
+            if (sheet.scrollLeft <= 80) {
+                extending = true;
+                const prevWidth = sheet.scrollWidth;
+                const frag = document.createDocumentFragment();
+                for (let i = 30; i >= 1; i--) {
+                    frag.appendChild(buildWeightCell(getDateString(new Date(weightSheetOldest.getTime() - i * 86400000))));
+                }
+                weightSheetOldest = new Date(weightSheetOldest.getTime() - 30 * 86400000);
+                sheet.insertBefore(frag, sheet.firstChild);
+                sheet.scrollLeft += sheet.scrollWidth - prevWidth;
+                extending = false;
+            } else if (sheet.scrollWidth - sheet.scrollLeft - sheet.clientWidth <= 80) {
+                extending = true;
+                const frag = document.createDocumentFragment();
+                for (let i = 1; i <= 30; i++) {
+                    frag.appendChild(buildWeightCell(getDateString(new Date(weightSheetLatest.getTime() + i * 86400000))));
+                }
+                weightSheetLatest = new Date(weightSheetLatest.getTime() + 30 * 86400000);
+                sheet.appendChild(frag);
+                extending = false;
             }
-            oldest = new Date(oldest.getTime() - 30 * 86400000);
-            sheet.insertBefore(frag, sheet.firstChild);
-            sheet.scrollLeft += sheet.scrollWidth - prevWidth;
-            extending = false;
         });
 
-        // Event delegation: one listener handles taps on any cell.
+        // Event delegation: one listener handles taps on any cell. Future cells
+        // also carry `pointer-events: none`, so this guard is just defence.
         sheet.addEventListener('click', (e) => {
             const cell = e.target.closest('.weight-cell');
-            if (cell) openWeightEntryModal(cell.dataset.date);
+            if (cell && !cell.classList.contains('future')) openWeightEntryModal(cell.dataset.date);
         });
     }
 
-    // Refreshes the value/state of already-rendered cells in place. A full
-    // rebuild would reset the scroll position, so data changes go through here.
+    // Grows the sheet outward so `dateStr` (plus a week of padding) is built,
+    // letting jump-to-date land on a cell even when it's far outside the range.
+    function ensureWeightSheetCovers(dateStr) {
+        const sheet = document.getElementById('weight-sheet');
+        if (!sheet || !weightSheetOldest || !weightSheetLatest) return;
+        const target = new Date(dateStr + 'T12:00:00');
+        const pad = 7 * 86400000;
+        if (target.getTime() < weightSheetOldest.getTime()) {
+            const newOldest = new Date(target.getTime() - pad);
+            const frag = document.createDocumentFragment();
+            for (let t = newOldest.getTime(); t < weightSheetOldest.getTime(); t += 86400000) {
+                frag.appendChild(buildWeightCell(getDateString(new Date(t))));
+            }
+            sheet.insertBefore(frag, sheet.firstChild);
+            weightSheetOldest = newOldest;
+        }
+        if (target.getTime() > weightSheetLatest.getTime()) {
+            const newLatest = new Date(target.getTime() + pad);
+            const frag = document.createDocumentFragment();
+            for (let t = weightSheetLatest.getTime() + 86400000; t <= newLatest.getTime(); t += 86400000) {
+                frag.appendChild(buildWeightCell(getDateString(new Date(t))));
+            }
+            sheet.appendChild(frag);
+            weightSheetLatest = newLatest;
+        }
+    }
+
+    // Refreshes the value/state of already-rendered cells in place, including
+    // which cell is the active "viewing" day. A full rebuild would reset the
+    // scroll position, so data changes go through here.
     function refreshWeightSheet() {
         const sheet = document.getElementById('weight-sheet');
         if (!sheet) return;
         sheet.querySelectorAll('.weight-cell').forEach((cell) => {
             const w = state.weightHistory[cell.dataset.date];
             cell.classList.toggle('filled', typeof w === 'number');
+            cell.classList.toggle('viewing', cell.dataset.date === viewingDateString);
             const valLbl = cell.querySelector('.weight-cell-val');
             if (valLbl) valLbl.textContent = typeof w === 'number' ? w.toFixed(1) : '+';
         });
     }
 
-    function weightSheetScrollToEnd() {
+    // Scrolls the sheet so the cell for `dateStr` sits centered in the viewport.
+    function weightSheetScrollToDate(dateStr) {
         const sheet = document.getElementById('weight-sheet');
         if (!sheet) return;
-        // Defer to the next frame: when the tab was hidden, scrollWidth is 0
-        // until layout runs.
-        requestAnimationFrame(() => { sheet.scrollLeft = sheet.scrollWidth; });
+        ensureWeightSheetCovers(dateStr);
+        // Defer to the next frame: when the tab was hidden, layout (and thus
+        // every cell's geometry) isn't resolved until it paints.
+        requestAnimationFrame(() => {
+            const cell = sheet.querySelector(`.weight-cell[data-date="${dateStr}"]`);
+            if (!cell) return;
+            const cellRect = cell.getBoundingClientRect();
+            const sheetRect = sheet.getBoundingClientRect();
+            const delta = (cellRect.left + cellRect.width / 2) - (sheetRect.left + sheetRect.width / 2);
+            sheet.scrollLeft += delta;
+        });
     }
 
     // Opens the shared number-entry modal for a given day. Empty value clears
@@ -1047,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (navTabs[clamped].getAttribute('data-target') === 'tab-weight') {
                 renderWeightTab();
                 refreshWeightSheet();
-                weightSheetScrollToEnd();
+                weightSheetScrollToDate(viewingDateString);
             }
         }
 

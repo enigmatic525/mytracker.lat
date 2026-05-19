@@ -1074,6 +1074,23 @@ body {
     color: var(--text-primary);
 }
 
+/* Future days: visible for context but not loggable. */
+.weight-cell.future {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* The day currently being viewed (driven by the header arrows / calendar). */
+.weight-cell.viewing {
+    border-color: var(--accent-primary);
+    background: var(--surface-hover);
+}
+
+.weight-cell.viewing .weight-cell-date {
+    color: var(--text-primary);
+}
+
 /* Tutorial Overlay */
 #tutorial-overlay {
     z-index: 200;
