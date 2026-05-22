@@ -49,6 +49,16 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 4, name: 'Boba Tea', calories: 500 }
     ];
 
+    // When true, preset cards expose delete buttons + an add tile and stop
+    // logging calories on tap. Toggled by the "Edit" button in the header.
+    let presetsEditMode = false;
+
+    // Account/session state. Declared up here — before init() runs — because
+    // wireAuthForm() reads authMode synchronously during init(), which would
+    // otherwise hit the temporal dead zone of a later `let`.
+    let currentEmail = null;
+    let authMode = 'login'; // 'login' | 'signup'
+
     // Weight-tab state shared between the renderer and the chart interaction handlers.
     let currentWeightRange = 'month';
     let activeDotDateStr = null;
@@ -103,35 +113,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const presetModal = document.getElementById('preset-modal');
     const presetNameInput = document.getElementById('preset-name-input');
     const presetCalInput = document.getElementById('preset-cal-input');
-    const btnAddPreset = document.getElementById('btn-add-preset');
+    const btnEditPresets = document.getElementById('btn-edit-presets');
     const btnCancelPreset = document.getElementById('btn-cancel-preset');
     const btnSavePreset = document.getElementById('btn-save-preset');
 
     // ===== Init =====
     init();
 
-    function init() {
-        loadState();
-        loadPresets();
+    // Decide what to show first: with an existing session, go straight into the
+    // app; otherwise present the login / signup screen.
+    async function init() {
+        wireAuthForm();
+        const me = await fetchMe();
+        if (me) {
+            currentEmail = me.email;
+            await startApp();
+        } else {
+            showAuthScreen();
+        }
+    }
+
+    // Loads this account's data from the server and brings the app online.
+    // Called once per page load — from init() or after a successful login.
+    async function startApp() {
+        await loadFromServer();
         updateDateElements();
         updateUI();
         setupEventListeners();
+        const emailEl = document.getElementById('settings-email');
+        if (emailEl) emailEl.textContent = currentEmail || '';
+        const authScreen = document.getElementById('auth-screen');
+        if (authScreen) authScreen.classList.add('hidden');
+        setupTutorial();
+    }
 
+    function showAuthScreen() {
+        const authScreen = document.getElementById('auth-screen');
+        if (authScreen) authScreen.classList.remove('hidden');
+        const u = document.getElementById('auth-email');
+        if (u) setTimeout(() => u.focus(), 100);
+    }
+
+    // First-run tutorial. The "seen" flag stays in localStorage — it is a
+    // per-device UI nicety, not account data worth syncing.
+    function setupTutorial() {
         const tutorialOverlay = document.getElementById('tutorial-overlay');
         const btnTutorialClose = document.getElementById('btn-tutorial-close');
-        if (tutorialOverlay && btnTutorialClose) {
-            let seen = false;
-            try { seen = !!localStorage.getItem('trackerTutorialSeen'); } catch (e) {}
-            if (!seen) tutorialOverlay.classList.add('active');
-            const closeTutorial = () => {
-                tutorialOverlay.classList.remove('active');
-                try { localStorage.setItem('trackerTutorialSeen', '1'); } catch (e) {}
-            };
-            btnTutorialClose.addEventListener('click', closeTutorial);
-            tutorialOverlay.addEventListener('click', (e) => {
-                if (e.target === tutorialOverlay) closeTutorial();
-            });
-        }
+        if (!tutorialOverlay || !btnTutorialClose) return;
+        let seen = false;
+        try { seen = !!localStorage.getItem('trackerTutorialSeen'); } catch (e) {}
+        if (!seen) tutorialOverlay.classList.add('active');
+        const closeTutorial = () => {
+            tutorialOverlay.classList.remove('active');
+            try { localStorage.setItem('trackerTutorialSeen', '1'); } catch (e) {}
+        };
+        btnTutorialClose.addEventListener('click', closeTutorial);
+        tutorialOverlay.addEventListener('click', (e) => {
+            if (e.target === tutorialOverlay) closeTutorial();
+        });
     }
 
     // ===== Date helpers =====
@@ -146,42 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===== Persistence =====
-    // localStorage is untrusted input: parse defensively and whitelist every field
-    // so a corrupt or hand-edited blob can never inject unexpected state.
-    function loadState() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            try {
-                const p = JSON.parse(saved);
-                state = {
-                    goal: typeof p.goal === 'number' ? p.goal : defaultGoal,
-                    maintenance: typeof p.maintenance === 'number' ? p.maintenance : defaultMaintenance,
-                    history: sanitizeNumberMap(p.history),
-                    weightHistory: sanitizeNumberMap(p.weightHistory),
-                    theme: p.theme === 'dark' ? 'dark' : 'light',
-                    unit: p.unit === 'metric' ? 'metric' : 'imperial'
-                };
-            } catch (e) {
-                // Corrupt storage — keep the safe defaults rather than crashing.
-            }
-        } else {
-            // Migrate from the v1 storage format if present.
-            const oldSaved = localStorage.getItem('calorieTrackerState');
-            if (oldSaved) {
-                try {
-                    const old = JSON.parse(oldSaved);
-                    if (typeof old.goal === 'number') state.goal = old.goal;
-                    if (old.lastUpdated && typeof old.calories === 'number') {
-                        state.history[old.lastUpdated] = old.calories;
-                    }
-                } catch (e) {}
-            }
-        }
-        if (typeof state.history[currentDateString] !== 'number') {
-            state.history[currentDateString] = 0;
-        }
-        applyThemeAndUnits();
-    }
+    // The server is the source of truth. Its responses are still treated as
+    // untrusted input: every field is parsed defensively and whitelisted.
 
     // Keep only 'YYYY-MM-DD' -> finite-number pairs from an untrusted object.
     function sanitizeNumberMap(obj) {
@@ -196,37 +201,180 @@ document.addEventListener('DOMContentLoaded', () => {
         return out;
     }
 
-    function saveState() {
+    // Fetches { state, presets } for the logged-in account and applies it.
+    async function loadFromServer() {
+        let data = null;
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) {}
+            const res = await fetch('/api/state', { credentials: 'same-origin' });
+            if (res.ok) data = await res.json();
+        } catch (e) {
+            // Offline / server error — fall back to the in-memory defaults.
+        }
+        if (data && data.state && typeof data.state === 'object') {
+            const p = data.state;
+            state = {
+                goal: typeof p.goal === 'number' ? p.goal : defaultGoal,
+                maintenance: typeof p.maintenance === 'number' ? p.maintenance : defaultMaintenance,
+                history: sanitizeNumberMap(p.history),
+                weightHistory: sanitizeNumberMap(p.weightHistory),
+                theme: p.theme === 'dark' ? 'dark' : 'light',
+                unit: p.unit === 'metric' ? 'metric' : 'imperial'
+            };
+        }
+        if (data && Array.isArray(data.presets)) {
+            presets = data.presets
+                .filter((p) => p && typeof p.name === 'string' && typeof p.calories === 'number' && isFinite(p.calories))
+                .slice(0, MAX_PRESETS)
+                .map((p) => ({
+                    id: typeof p.id === 'number' ? p.id : Date.now() + Math.random(),
+                    name: p.name.slice(0, MAX_PRESET_NAME),
+                    calories: p.calories
+                }));
+        }
+        if (typeof state.history[currentDateString] !== 'number') {
+            state.history[currentDateString] = 0;
+        }
+        applyThemeAndUnits();
+        renderPresets();
     }
 
-    function loadPresets() {
-        const savedPresets = localStorage.getItem(PRESETS_KEY);
-        if (savedPresets) {
-            try {
-                const parsed = JSON.parse(savedPresets);
-                if (Array.isArray(parsed)) {
-                    presets = parsed
-                        .filter((p) => p && typeof p.name === 'string' && typeof p.calories === 'number' && isFinite(p.calories))
-                        .slice(0, MAX_PRESETS)
-                        .map((p) => ({
-                            id: typeof p.id === 'number' ? p.id : Date.now() + Math.random(),
-                            name: p.name.slice(0, MAX_PRESET_NAME),
-                            calories: p.calories
-                        }));
-                }
-            } catch (e) {}
+    // Every mutation calls saveState() / savePresets(); both funnel into one
+    // debounced PUT, so a burst of taps collapses into a single network write.
+    let pushTimer = null;
+    function schedulePush() {
+        if (pushTimer) clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => pushToServer(false), 350);
+    }
+    function pushToServer(useKeepalive) {
+        if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+        try {
+            return fetch('/api/state', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ state, presets }),
+                keepalive: !!useKeepalive
+            });
+        } catch (e) {
+            return Promise.resolve();
         }
-        renderPresets();
+    }
+    // Flush a pending change when the tab is hidden or closed. keepalive lets
+    // the request finish even as the page goes away.
+    window.addEventListener('pagehide', () => { if (pushTimer) pushToServer(true); });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && pushTimer) pushToServer(true);
+    });
+
+    function saveState() {
+        schedulePush();
     }
 
     function savePresets() {
-        try {
-            localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-        } catch (e) {}
+        schedulePush();
         renderPresets();
+    }
+
+    // ===== Auth =====
+    // (currentEmail / authMode are declared near the top — see note there.)
+
+    // Returns the current user ({ email }) or null when not signed in.
+    async function fetchMe() {
+        try {
+            const res = await fetch('/api/auth/me', { credentials: 'same-origin' });
+            if (res.ok) return await res.json();
+        } catch (e) {}
+        return null;
+    }
+
+    // Wires the login / signup form. Runs once, before the app starts.
+    function wireAuthForm() {
+        const form = document.getElementById('auth-form');
+        const toggle = document.getElementById('auth-toggle');
+        const errEl = document.getElementById('auth-error');
+        const submitBtn = document.getElementById('auth-submit');
+        const subtitle = document.getElementById('auth-subtitle');
+        const emailInput = document.getElementById('auth-email');
+        const passwordInput = document.getElementById('auth-password');
+        if (!form) return;
+
+        function applyMode() {
+            const login = authMode === 'login';
+            subtitle.textContent = login ? 'Log in to your account' : 'Create your account';
+            submitBtn.textContent = login ? 'Log in' : 'Sign up';
+            toggle.textContent = login ? 'Need an account? Sign up' : 'Have an account? Log in';
+            passwordInput.setAttribute('autocomplete', login ? 'current-password' : 'new-password');
+            errEl.textContent = '';
+        }
+
+        toggle.addEventListener('click', () => {
+            authMode = authMode === 'login' ? 'signup' : 'login';
+            applyMode();
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = emailInput.value.trim().toLowerCase();
+            const password = passwordInput.value;
+            errEl.textContent = '';
+            if (authMode === 'signup' && password.length < 8) {
+                errEl.textContent = 'Password must be at least 8 characters.';
+                return;
+            }
+            submitBtn.disabled = true;
+            try {
+                const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    errEl.textContent = data.error || 'Something went wrong. Please try again.';
+                    submitBtn.disabled = false;
+                    return;
+                }
+                currentEmail = data.email || email;
+                // A returning single-device user may still have data in the old
+                // localStorage-only build — lift it into the new account once.
+                if (authMode === 'signup') await migrateLocalData();
+                await startApp();
+            } catch (err) {
+                errEl.textContent = 'Network error. Please try again.';
+                submitBtn.disabled = false;
+            }
+        });
+
+        applyMode();
+    }
+
+    // One-time import of pre-accounts localStorage data, run right after signup.
+    async function migrateLocalData() {
+        try {
+            const rawState = localStorage.getItem(STORAGE_KEY);
+            const rawPresets = localStorage.getItem(PRESETS_KEY);
+            if (!rawState && !rawPresets) return;
+            const body = { state: null, presets: null };
+            if (rawState) body.state = JSON.parse(rawState);
+            if (rawPresets) body.presets = JSON.parse(rawPresets);
+            if (!body.state || typeof body.state !== 'object') {
+                body.state = {
+                    goal: defaultGoal, maintenance: defaultMaintenance,
+                    history: {}, weightHistory: {}, theme: 'light', unit: 'imperial'
+                };
+            }
+            if (!Array.isArray(body.presets)) body.presets = presets;
+            await fetch('/api/state', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body)
+            });
+        } catch (e) {
+            // Migration is best-effort; a failure just means starting fresh.
+        }
     }
 
     // ===== Theme & units =====
@@ -429,8 +577,22 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUI();
     }
 
+    // Opens the add-preset modal, refusing once the preset cap is reached.
+    function openPresetModal() {
+        if (presets.length >= MAX_PRESETS) {
+            alert(`Maximum of ${MAX_PRESETS} presets allowed.`);
+            return;
+        }
+        presetNameInput.value = '';
+        presetCalInput.value = '';
+        presetModal.classList.add('active');
+        setTimeout(() => presetNameInput.focus(), 100);
+    }
+
     function renderPresets() {
         presetsGrid.innerHTML = '';
+        presetsGrid.classList.toggle('editing', presetsEditMode);
+
         presets.forEach((preset) => {
             const card = document.createElement('div');
             card.className = 'preset-card';
@@ -445,28 +607,38 @@ document.addEventListener('DOMContentLoaded', () => {
             calEl.textContent = `${preset.calories > 0 ? '+' : ''}${preset.calories}`;
             info.appendChild(nameEl);
             info.appendChild(calEl);
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'preset-delete';
-            delBtn.setAttribute('aria-label', 'Delete preset');
-            // Static SVG markup, no user data.
-            delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-
             card.appendChild(info);
-            card.appendChild(delBtn);
 
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.preset-delete')) return;
-                adjustCalories(preset.calories);
-            });
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                presets = presets.filter((p) => p.id !== preset.id);
-                savePresets();
-            });
+            if (presetsEditMode) {
+                // Edit mode: the card is for deletion only — tapping it must not log calories.
+                const delBtn = document.createElement('button');
+                delBtn.className = 'preset-delete';
+                delBtn.setAttribute('aria-label', `Delete ${preset.name}`);
+                // Static SVG markup, no user data.
+                delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    presets = presets.filter((p) => p.id !== preset.id);
+                    savePresets();
+                });
+                card.appendChild(delBtn);
+            } else {
+                // Normal mode: a tap goes straight to logging the preset's calories.
+                card.addEventListener('click', () => adjustCalories(preset.calories));
+            }
 
             presetsGrid.appendChild(card);
         });
+
+        // Edit mode also offers a tile for adding a preset, up to the cap.
+        if (presetsEditMode && presets.length < MAX_PRESETS) {
+            const addTile = document.createElement('button');
+            addTile.type = 'button';
+            addTile.className = 'preset-add-tile';
+            addTile.textContent = '+ Add preset';
+            addTile.addEventListener('click', openPresetModal);
+            presetsGrid.appendChild(addTile);
+        }
     }
 
     // ===== Navigation between days / dates =====
@@ -899,6 +1071,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (title) title.textContent = dateStr === currentDateString ? 'Log weight · Today' : `Log weight · ${label}`;
         const existing = state.weightHistory[dateStr];
         input.value = typeof existing === 'number' ? existing : '';
+        // Delete is only meaningful when there is an entry to remove.
+        const deleteBtn = document.getElementById('btn-delete-weight-edit');
+        if (deleteBtn) deleteBtn.style.display = typeof existing === 'number' ? '' : 'none';
         modal._editDateStr = dateStr;
         modal.classList.add('active');
         setTimeout(() => input.focus(), 100);
@@ -1041,12 +1216,12 @@ document.addEventListener('DOMContentLoaded', () => {
             maintModal.classList.remove('active');
         });
 
-        // Preset modal
-        btnAddPreset.addEventListener('click', () => {
-            presetNameInput.value = '';
-            presetCalInput.value = '';
-            presetModal.classList.add('active');
-            setTimeout(() => presetNameInput.focus(), 100);
+        // Presets: the header button toggles edit mode (delete + add); the
+        // add tile rendered inside edit mode opens the modal below.
+        btnEditPresets.addEventListener('click', () => {
+            presetsEditMode = !presetsEditMode;
+            btnEditPresets.textContent = presetsEditMode ? 'Done' : 'Edit';
+            renderPresets();
         });
         btnCancelPreset.addEventListener('click', () => presetModal.classList.remove('active'));
         btnSavePreset.addEventListener('click', () => {
@@ -1142,6 +1317,20 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('close-modal-settings').addEventListener('click', () => {
             document.getElementById('modal-settings').classList.remove('active');
         });
+
+        // Log out — flush any pending change, end the session, reload to the
+        // login screen.
+        const btnLogout = document.getElementById('btn-logout');
+        if (btnLogout) {
+            btnLogout.addEventListener('click', async () => {
+                btnLogout.disabled = true;
+                if (pushTimer) { try { await pushToServer(false); } catch (e) {} }
+                try {
+                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
+                } catch (e) {}
+                window.location.reload();
+            });
+        }
         document.querySelectorAll('.modal-overlay').forEach((modal) => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) modal.classList.remove('active');
@@ -1197,6 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const weightEditInput = document.getElementById('weight-edit-input');
         const btnSaveWeightEdit = document.getElementById('btn-save-weight-edit');
         const btnCancelWeightEdit = document.getElementById('btn-cancel-weight-edit');
+        const btnDeleteWeightEdit = document.getElementById('btn-delete-weight-edit');
 
         function updateScrubber(clientX) {
             if (!currentSvgPts || currentSvgPts.length === 0) return null;
@@ -1348,6 +1538,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (btnCancelWeightEdit) {
             btnCancelWeightEdit.addEventListener('click', () => weightEditModal.classList.remove('active'));
+        }
+        if (btnDeleteWeightEdit) {
+            btnDeleteWeightEdit.addEventListener('click', () => {
+                const dateStr = weightEditModal._editDateStr;
+                if (dateStr) {
+                    delete state.weightHistory[dateStr];
+                    saveState();
+                    refreshWeightSheet();
+                    renderWeightTab();
+                }
+                weightEditModal.classList.remove('active');
+            });
         }
         if (weightEditModal) {
             weightEditModal.addEventListener('click', (e) => {

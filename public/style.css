@@ -469,9 +469,27 @@ body {
     overflow: hidden;
 }
 
-.preset-card:hover {
-    background-color: var(--surface-hover);
-    border-color: var(--text-secondary);
+/* Hover feedback only on devices with a real pointer — on touch the :hover
+   state sticks after a tap, making a tapped preset look highlighted/selected. */
+@media (hover: hover) {
+    .preset-card:hover {
+        background-color: var(--surface-hover);
+        border-color: var(--text-secondary);
+    }
+    .preset-delete:hover {
+        color: var(--text-primary);
+    }
+    .preset-add-tile:hover {
+        border-color: var(--text-secondary);
+        color: var(--text-primary);
+    }
+}
+
+/* In edit mode the card no longer logs calories — it only carries the
+   delete button, so drop the pointer cursor and clear room for the X. */
+.presets-grid.editing .preset-card {
+    cursor: default;
+    padding-right: 34px;
 }
 
 .preset-name {
@@ -488,22 +506,29 @@ body {
 .preset-delete {
     background: none;
     border: none;
-    color: var(--text-secondary);
+    color: var(--danger);
     cursor: pointer;
-    opacity: 0;
     position: absolute;
-    right: 8px;
-    top: 8px;
+    right: 6px;
+    top: 6px;
     padding: 4px;
+    display: flex;
+    align-items: center;
     transition: var(--transition);
 }
 
-.preset-card:hover .preset-delete {
-    opacity: 1;
-}
-
-.preset-delete:hover {
-    color: var(--danger);
+.preset-add-tile {
+    background: none;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    min-height: 44px;
+    color: var(--text-secondary);
+    font-family: var(--font-main);
+    font-size: 13px;
+    font-weight: var(--font-weight-regular);
+    cursor: pointer;
+    transition: var(--transition);
 }
 
 /* Modals */
@@ -663,6 +688,16 @@ body {
 
 .btn-primary:hover {
     opacity: 0.85;
+}
+
+.btn-danger {
+    background-color: transparent;
+    color: var(--danger);
+    border-color: var(--border-color);
+}
+
+.btn-danger:hover {
+    border-color: var(--danger);
 }
 
 /* Responsive adjustments */
@@ -1191,4 +1226,72 @@ body {
     border: 2px solid #888;
     border-right-color: #fff;
     border-bottom-color: #fff;
+}
+
+/* ===== Account / auth screen ===== */
+.auth-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background-color: var(--bg-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.auth-screen.hidden {
+    display: none;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+}
+
+.auth-title {
+    font-size: 28px;
+    font-weight: var(--font-weight-light);
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.auth-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-regular);
+    text-align: center;
+    margin: 8px 0 24px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.auth-form .modal-input {
+    width: 100%;
+}
+
+.auth-form .btn-primary {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.auth-error {
+    font-size: 12px;
+    color: var(--danger);
+    font-weight: var(--font-weight-regular);
+    min-height: 16px;
+    text-align: center;
+    margin: 0;
+}
+
+.auth-toggle {
+    margin-top: 16px;
+    text-align: center;
+    color: var(--text-secondary);
 }

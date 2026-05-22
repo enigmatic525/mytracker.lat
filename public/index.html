@@ -25,6 +25,24 @@
 </head>
 
 <body>
+    <!-- Account screen — covers the app until the user is logged in. -->
+    <div id="auth-screen" class="auth-screen">
+        <div class="auth-card">
+            <h1 class="auth-title">My Tracker</h1>
+            <p class="auth-subtitle" id="auth-subtitle">Log in to your account</p>
+            <form id="auth-form" class="auth-form" autocomplete="on">
+                <input type="email" id="auth-email" class="modal-input" placeholder="Email"
+                    autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"
+                    maxlength="254" required>
+                <input type="password" id="auth-password" class="modal-input" placeholder="Password"
+                    autocomplete="current-password" maxlength="200" required>
+                <p class="auth-error" id="auth-error" role="alert"></p>
+                <button type="submit" class="btn btn-primary" id="auth-submit">Log in</button>
+            </form>
+            <button type="button" class="btn-text auth-toggle" id="auth-toggle">Need an account? Sign up</button>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Header -->
         <header class="header" style="position: relative;">
@@ -139,7 +157,7 @@
                 <section class="presets-section">
                     <div class="presets-header">
                         <h2>Presets</h2>
-                        <button class="btn-text" id="btn-add-preset">+ Add new</button>
+                        <button class="btn-text" id="btn-edit-presets">Edit</button>
                     </div>
                     <div class="presets-grid" id="presets-grid">
                         <!-- Presets will be generated here -->
@@ -248,6 +266,7 @@
                 <button type="button" class="stepper-btn" data-dir="1" aria-label="Increase weight">+</button>
             </div>
             <div class="modal-actions">
+                <button class="btn btn-danger" id="btn-delete-weight-edit" style="margin-right: auto; display: none;">Delete</button>
                 <button class="btn btn-secondary" id="btn-cancel-weight-edit">Cancel</button>
                 <button class="btn btn-primary" id="btn-save-weight-edit">Save</button>
             </div>
@@ -277,6 +296,12 @@
                         <button class="btn btn-secondary unit-toggle active" data-unit="imperial" style="flex: 1;">Imperial (lbs)</button>
                         <button class="btn btn-secondary unit-toggle" data-unit="metric" style="flex: 1;">Metric (kg)</button>
                     </div>
+                </div>
+                <!-- Account -->
+                <div>
+                    <label style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; display: block;">Account</label>
+                    <p id="settings-email" style="font-size: 14px; color: var(--text-primary); margin-bottom: 12px; font-weight: var(--font-weight-regular);"></p>
+                    <button class="btn btn-secondary" id="btn-logout" style="width: 100%;">Log out</button>
                 </div>
             </div>
         </div>
