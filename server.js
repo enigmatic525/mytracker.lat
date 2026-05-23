@@ -168,6 +168,10 @@ app.put('/api/state', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
+// Health check for the deploy host (Render etc.) — must be reachable without
+// a session and return 2xx.
+app.get('/healthz', (req, res) => res.type('text/plain').send('ok'));
+
 // Unknown API paths should fail as JSON, not fall through to the static client.
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

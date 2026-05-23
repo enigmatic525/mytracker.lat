@@ -1,0 +1,27 @@
+# Render Blueprint — provisions the web service and persistent disk for
+# MyTracker in one go. To use: sign in at https://dashboard.render.com,
+# click "New +" → "Blueprint", pick this repo. Render reads this file and
+# creates everything below.
+# Spec: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: mytracker
+    env: docker
+    # Deploy this branch first to verify the Node app live; switch to `main`
+    # (here or in the dashboard) after you've merged and cut DNS over.
+    branch: node-multiuser
+    dockerfilePath: ./Dockerfile
+    # The free tier does NOT support persistent disks, which the SQLite
+    # database needs — Starter is the minimum that works.
+    plan: starter
+    region: oregon          # change to a region closer to you if you like
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true # Render generates a strong random value once
+    disk:
+      name: mytracker-data
+      mountPath: /app/data  # matches the VOLUME in the Dockerfile
+      sizeGB: 1             # SQLite for a handful of users is tiny
