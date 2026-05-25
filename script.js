@@ -49,6 +49,10 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 4, name: 'Boba Tea', calories: 500 }
     ];
 
+    // When true, preset cards expose delete buttons + an add tile and stop
+    // logging calories on tap. Toggled by the "Edit" button in the header.
+    let presetsEditMode = false;
+
     // Weight-tab state shared between the renderer and the chart interaction handlers.
     let currentWeightRange = 'month';
     let activeDotDateStr = null;
@@ -103,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const presetModal = document.getElementById('preset-modal');
     const presetNameInput = document.getElementById('preset-name-input');
     const presetCalInput = document.getElementById('preset-cal-input');
-    const btnAddPreset = document.getElementById('btn-add-preset');
+    const btnEditPresets = document.getElementById('btn-edit-presets');
     const btnCancelPreset = document.getElementById('btn-cancel-preset');
     const btnSavePreset = document.getElementById('btn-save-preset');
 
@@ -429,8 +433,22 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUI();
     }
 
+    // Opens the add-preset modal, refusing once the preset cap is reached.
+    function openPresetModal() {
+        if (presets.length >= MAX_PRESETS) {
+            alert(`Maximum of ${MAX_PRESETS} presets allowed.`);
+            return;
+        }
+        presetNameInput.value = '';
+        presetCalInput.value = '';
+        presetModal.classList.add('active');
+        setTimeout(() => presetNameInput.focus(), 100);
+    }
+
     function renderPresets() {
         presetsGrid.innerHTML = '';
+        presetsGrid.classList.toggle('editing', presetsEditMode);
+
         presets.forEach((preset) => {
             const card = document.createElement('div');
             card.className = 'preset-card';
@@ -445,28 +463,38 @@ document.addEventListener('DOMContentLoaded', () => {
             calEl.textContent = `${preset.calories > 0 ? '+' : ''}${preset.calories}`;
             info.appendChild(nameEl);
             info.appendChild(calEl);
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'preset-delete';
-            delBtn.setAttribute('aria-label', 'Delete preset');
-            // Static SVG markup, no user data.
-            delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-
             card.appendChild(info);
-            card.appendChild(delBtn);
 
-            card.addEventListener('click', (e) => {
-                if (e.target.closest('.preset-delete')) return;
-                adjustCalories(preset.calories);
-            });
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                presets = presets.filter((p) => p.id !== preset.id);
-                savePresets();
-            });
+            if (presetsEditMode) {
+                // Edit mode: the card is for deletion only — tapping it must not log calories.
+                const delBtn = document.createElement('button');
+                delBtn.className = 'preset-delete';
+                delBtn.setAttribute('aria-label', `Delete ${preset.name}`);
+                // Static SVG markup, no user data.
+                delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    presets = presets.filter((p) => p.id !== preset.id);
+                    savePresets();
+                });
+                card.appendChild(delBtn);
+            } else {
+                // Normal mode: a tap goes straight to logging the preset's calories.
+                card.addEventListener('click', () => adjustCalories(preset.calories));
+            }
 
             presetsGrid.appendChild(card);
         });
+
+        // Edit mode also offers a tile for adding a preset, up to the cap.
+        if (presetsEditMode && presets.length < MAX_PRESETS) {
+            const addTile = document.createElement('button');
+            addTile.type = 'button';
+            addTile.className = 'preset-add-tile';
+            addTile.textContent = '+ Add preset';
+            addTile.addEventListener('click', openPresetModal);
+            presetsGrid.appendChild(addTile);
+        }
     }
 
     // ===== Navigation between days / dates =====
@@ -1042,11 +1070,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Preset modal
-        btnAddPreset.addEventListener('click', () => {
-            presetNameInput.value = '';
-            presetCalInput.value = '';
-            presetModal.classList.add('active');
-            setTimeout(() => presetNameInput.focus(), 100);
+        // Presets: the header button toggles edit mode (delete + add); the
+        // add tile rendered inside edit mode opens the modal below.
+        btnEditPresets.addEventListener('click', () => {
+            presetsEditMode = !presetsEditMode;
+            btnEditPresets.textContent = presetsEditMode ? 'Done' : 'Edit';
+            renderPresets();
         });
         btnCancelPreset.addEventListener('click', () => presetModal.classList.remove('active'));
         btnSavePreset.addEventListener('click', () => {
