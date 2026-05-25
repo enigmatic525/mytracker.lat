@@ -327,8 +327,10 @@ body {
     cursor: pointer;
 }
 
-.editable-number:hover {
-    color: var(--text-secondary);
+@media (hover: hover) {
+    .editable-number:hover {
+        color: var(--text-secondary);
+    }
 }
 
 .main-tracker-section>.btn {
@@ -360,9 +362,11 @@ body {
     transition: var(--transition);
 }
 
-.btn-info:hover {
-    background: var(--border-color);
-    color: var(--text-primary);
+@media (hover: hover) {
+    .btn-info:hover {
+        background: var(--border-color);
+        color: var(--text-primary);
+    }
 }
 
 .btn-icon {
@@ -379,9 +383,11 @@ body {
     transition: var(--transition);
 }
 
-.btn-icon:hover {
-    background: var(--surface-hover);
-    border-color: var(--text-secondary);
+@media (hover: hover) {
+    .btn-icon:hover {
+        background: var(--surface-hover);
+        border-color: var(--text-secondary);
+    }
 }
 
 .btn-icon:active {
@@ -405,9 +411,11 @@ body {
     transition: var(--transition);
 }
 
-.btn-icon-text:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-color);
+@media (hover: hover) {
+    .btn-icon-text:hover {
+        background: var(--surface-hover);
+        border-color: var(--border-color);
+    }
 }
 
 .btn-icon-text:active {
@@ -445,8 +453,10 @@ body {
     transition: var(--transition);
 }
 
-.btn-text:hover {
-    color: var(--text-secondary);
+@media (hover: hover) {
+    .btn-text:hover {
+        color: var(--text-secondary);
+    }
 }
 
 .presets-grid {
@@ -641,9 +651,11 @@ body {
     justify-content: center;
 }
 
-.stepper-btn:hover {
-    background: var(--surface-hover);
-    border-color: var(--text-secondary);
+@media (hover: hover) {
+    .stepper-btn:hover {
+        background: var(--surface-hover);
+        border-color: var(--text-secondary);
+    }
 }
 
 .stepper-btn:active {
@@ -675,9 +687,11 @@ body {
     border-color: var(--border-color);
 }
 
-.btn-secondary:hover {
-    color: var(--text-primary);
-    border-color: var(--text-secondary);
+@media (hover: hover) {
+    .btn-secondary:hover {
+        color: var(--text-primary);
+        border-color: var(--text-secondary);
+    }
 }
 
 .btn-primary {
@@ -686,8 +700,10 @@ body {
     border-color: var(--accent-primary);
 }
 
-.btn-primary:hover {
-    opacity: 0.85;
+@media (hover: hover) {
+    .btn-primary:hover {
+        opacity: 0.85;
+    }
 }
 
 /* Responsive adjustments */
@@ -1071,9 +1087,11 @@ body {
     padding: 0;
 }
 
-.weight-cell:hover {
-    background: var(--surface-hover);
-    border-color: var(--text-secondary);
+@media (hover: hover) {
+    .weight-cell:hover {
+        background: var(--surface-hover);
+        border-color: var(--text-secondary);
+    }
 }
 
 .weight-cell-date {
