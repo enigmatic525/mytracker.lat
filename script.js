@@ -19,21 +19,38 @@ if ('serviceWorker' in navigator) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // ===== Constants =====
-    const defaultGoal = 2000;
+    const defaultGoal = 2000;       // legacy absolute goal, used only for migration
     const defaultMaintenance = 2500;
+    // Goal is now a signed daily energy balance target (intake − expenditure):
+    // negative = deficit (lose), 0 = maintain, positive = surplus (gain).
+    const defaultGoalBalance = defaultGoal - defaultMaintenance; // −500
+    const GOAL_BALANCE_LIMIT = 1500; // clamp for the goal stepper, ± this
     const MIN_WEIGHT = 1;          // sanity bounds for input validation
     const MAX_WEIGHT = 1500;
-    const MAX_CALORIES = 100000;
-    const MAX_PRESETS = 4;
-    const MAX_PRESET_NAME = 40;
+    // A day's total intake (and, separately, total activity) is capped here. Entries
+    // that would push the running total past this are clamped to the remaining room.
+    const DAILY_CAL_CAP = 10000;
+    // The pending-amount wheel: scroll left/right (in steps of 50) to set the
+    // amount, then a meter tap logs it. Item width must match .hwheel-item (and the
+    // side-padding/highlight) in the CSS, or the snap won't center cleanly.
+    const PENDING_STEP = 50;
+    const PENDING_MAX = 5000;       // any single entry beyond this can be logged twice
+    const PENDING_ITEM_W = 72;
+    // The tallest value in the weekly chart reaches this % of the plot height; the
+    // rest is headroom for the diff label sitting above the bar. Kept well under 100
+    // because the scroller clips overflow vertically (overflow-y: hidden), so a bar
+    // that topped out near 100% would have its label cut off. Declared up here so
+    // init()'s first render can't hit a temporal-dead-zone error.
+    const CHART_TOP = 80;
     const STORAGE_KEY = 'calorieTrackerStateV2';
-    const PRESETS_KEY = 'calorieTrackerPresets';
 
     // ===== State =====
+    // history maps a date to { in, out }: `in` = calories eaten, `out` = activity
+    // burned on top of TDEE. Total expenditure for a day is maintenance + out.
     let state = {
-        goal: defaultGoal,
+        goalBalance: defaultGoalBalance,
         maintenance: defaultMaintenance,
-        history: {},          // { 'YYYY-MM-DD': calories }
+        history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
         theme: 'light',       // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
@@ -42,16 +59,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDateString = getTodayDateString();
     let viewingDateString = currentDateString;
 
-    let presets = [
-        { id: 1, name: 'Hamburger', calories: 350 },
-        { id: 2, name: 'Medium Fries', calories: 400 },
-        { id: 3, name: 'Chips', calories: 200 },
-        { id: 4, name: 'Boba Tea', calories: 500 }
-    ];
-
-    // When true, preset cards expose delete buttons + an add tile and stop
-    // logging calories on tap. Toggled by the "Edit" button in the header.
-    let presetsEditMode = false;
+    // The pending amount the wheel is centered on; tapping a meter logs it there.
+    // Declared up here (not beside the wheel helpers) because setupEventListeners —
+    // which runs during init() — touches them before that code is reached.
+    let pendingAmount = 0;
+    let pendingSelectedIdx = -1;   // which wheel row is centered/selected
+    let pendingScrollRaf = 0;      // rAF handle that throttles the scroll handler
+    // Monotonic counter for entry ids (unique within a session is enough — ids are
+    // only used to delete a specific log row).
+    let entrySeq = 0;
+    function nextEntryId() {
+        entrySeq += 1;
+        return `${Date.now().toString(36)}-${entrySeq.toString(36)}`;
+    }
 
     // Weight-tab state shared between the renderer and the chart interaction handlers.
     let currentWeightRange = 'month';
@@ -67,8 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dateEl = document.getElementById('current-date');
     const dayLabelEl = document.getElementById('day-label');
     const dateTitlesEl = document.getElementById('date-titles');
-    const datePickerEl = document.getElementById('date-picker');
-    const caloriesCurrentEl = document.getElementById('calories-current');
+    const calendarModal = document.getElementById('calendar-modal');
+    const calGridEl = document.getElementById('cal-grid');
+    const calMonthLabelEl = document.getElementById('cal-month-label');
+    const calPrevMonthEl = document.getElementById('cal-prev-month');
+    const calNextMonthEl = document.getElementById('cal-next-month');
     const caloriesLeftEl = document.getElementById('calories-left');
     const metricGoalEl = document.getElementById('metric-goal');
     const metricMaintEl = document.getElementById('metric-maint');
@@ -78,23 +101,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnPrevDay = document.getElementById('btn-prev-day');
     const btnNextDay = document.getElementById('btn-next-day');
 
-    const btnMinus100 = document.getElementById('btn-minus-100');
-    const btnMinus50 = document.getElementById('btn-minus-50');
-    const btnPlus50 = document.getElementById('btn-plus-50');
-    const btnPlus100 = document.getElementById('btn-plus-100');
     const progressBarFill = document.getElementById('progress-bar-fill');
-    const presetsGrid = document.getElementById('presets-grid');
+
+    // In/out meters + slider adder
+    const meterInEl = document.getElementById('meter-in');
+    const meterOutEl = document.getElementById('meter-out');
+    const meterInValEl = document.getElementById('meter-in-val');
+    const meterOutValEl = document.getElementById('meter-out-val');
+    const meterInHintEl = document.getElementById('meter-in-hint');
+    const meterOutHintEl = document.getElementById('meter-out-hint');
+    const pendingWheelScrollEl = document.getElementById('pending-wheel-scroll');
+    const logListInEl = document.getElementById('log-list-in');
+    const logListOutEl = document.getElementById('log-list-out');
+    const logEmptyInEl = document.getElementById('log-empty-in');
+    const logEmptyOutEl = document.getElementById('log-empty-out');
 
     const chartBarsEl = document.getElementById('chart-bars');
-    const chartGoalLineEl = document.getElementById('chart-goal-line');
-    const chartMaintenanceLineEl = document.getElementById('chart-maintenance-line');
-    const chartLabelsRowEl = document.getElementById('chart-labels-row');
     const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
-
-    const caloriesModal = document.getElementById('calories-modal');
-    const caloriesInput = document.getElementById('calories-input');
-    const btnCancelCalories = document.getElementById('btn-cancel-calories');
-    const btnSaveCalories = document.getElementById('btn-save-calories');
 
     const goalModal = document.getElementById('goal-modal');
     const btnCancelGoal = document.getElementById('btn-cancel-goal');
@@ -104,19 +127,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCancelMaint = document.getElementById('btn-cancel-maint');
     const btnSaveMaint = document.getElementById('btn-save-maint');
 
-    const presetModal = document.getElementById('preset-modal');
-    const presetNameInput = document.getElementById('preset-name-input');
-    const presetCalInput = document.getElementById('preset-cal-input');
-    const btnEditPresets = document.getElementById('btn-edit-presets');
-    const btnCancelPreset = document.getElementById('btn-cancel-preset');
-    const btnSavePreset = document.getElementById('btn-save-preset');
-
     // ===== Init =====
     init();
 
     function init() {
         loadState();
-        loadPresets();
         updateDateElements();
         updateUI();
         setupEventListeners();
@@ -157,10 +172,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (saved) {
             try {
                 const p = JSON.parse(saved);
+                const maintenance = typeof p.maintenance === 'number' ? p.maintenance : defaultMaintenance;
+                // Prefer the new signed-balance field; migrate a legacy absolute
+                // `goal` by expressing it relative to maintenance.
+                let goalBalance = defaultGoalBalance;
+                if (typeof p.goalBalance === 'number' && isFinite(p.goalBalance)) {
+                    goalBalance = p.goalBalance;
+                } else if (typeof p.goal === 'number' && isFinite(p.goal)) {
+                    goalBalance = p.goal - maintenance;
+                }
                 state = {
-                    goal: typeof p.goal === 'number' ? p.goal : defaultGoal,
-                    maintenance: typeof p.maintenance === 'number' ? p.maintenance : defaultMaintenance,
-                    history: sanitizeNumberMap(p.history),
+                    goalBalance: Math.max(-GOAL_BALANCE_LIMIT, Math.min(GOAL_BALANCE_LIMIT, goalBalance)),
+                    maintenance: maintenance,
+                    history: sanitizeHistoryMap(p.history),
                     weightHistory: sanitizeNumberMap(p.weightHistory),
                     theme: p.theme === 'dark' ? 'dark' : 'light',
                     unit: p.unit === 'metric' ? 'metric' : 'imperial'
@@ -174,15 +198,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (oldSaved) {
                 try {
                     const old = JSON.parse(oldSaved);
-                    if (typeof old.goal === 'number') state.goal = old.goal;
-                    if (old.lastUpdated && typeof old.calories === 'number') {
-                        state.history[old.lastUpdated] = old.calories;
+                    if (typeof old.goal === 'number') state.goalBalance = old.goal - state.maintenance;
+                    if (old.lastUpdated && typeof old.calories === 'number' && old.calories > 0) {
+                        state.history[old.lastUpdated] = [{ id: nextEntryId(), t: 'in', a: old.calories }];
                     }
                 } catch (e) {}
             }
-        }
-        if (typeof state.history[currentDateString] !== 'number') {
-            state.history[currentDateString] = 0;
         }
         applyThemeAndUnits();
     }
@@ -200,37 +221,53 @@ document.addEventListener('DOMContentLoaded', () => {
         return out;
     }
 
+    // Each day is now a list of entries: [{ id, t:'in'|'out', a }]. Migrate the two
+    // older formats (a bare number = one `in` entry; an { in, out } object = up to
+    // two entries) so existing data survives. Fresh ids are assigned on load.
+    function sanitizeHistoryMap(obj) {
+        const out = {};
+        const pos = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+        if (obj && typeof obj === 'object') {
+            Object.keys(obj).forEach((k) => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+                const v = obj[k];
+                const entries = [];
+                if (typeof v === 'number') {
+                    if (pos(v)) entries.push({ id: nextEntryId(), t: 'in', a: pos(v) });
+                } else if (Array.isArray(v)) {
+                    v.forEach((e) => {
+                        if (e && (e.t === 'in' || e.t === 'out') && pos(e.a)) {
+                            entries.push({ id: nextEntryId(), t: e.t, a: pos(e.a) });
+                        }
+                    });
+                } else if (v && typeof v === 'object') {
+                    if (pos(v.in)) entries.push({ id: nextEntryId(), t: 'in', a: pos(v.in) });
+                    if (pos(v.out)) entries.push({ id: nextEntryId(), t: 'out', a: pos(v.out) });
+                }
+                if (entries.length) out[k] = entries;
+            });
+        }
+        return out;
+    }
+
+    // A day's entry list (empty array if none), and its summed in/out totals.
+    function getEntries(dateStr) {
+        const v = state.history[dateStr];
+        return Array.isArray(v) ? v : [];
+    }
+    function dayData(dateStr) {
+        let inSum = 0;
+        let outSum = 0;
+        getEntries(dateStr).forEach((e) => {
+            if (e.t === 'out') outSum += e.a; else inSum += e.a;
+        });
+        return { in: inSum, out: outSum };
+    }
+
     function saveState() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (e) {}
-    }
-
-    function loadPresets() {
-        const savedPresets = localStorage.getItem(PRESETS_KEY);
-        if (savedPresets) {
-            try {
-                const parsed = JSON.parse(savedPresets);
-                if (Array.isArray(parsed)) {
-                    presets = parsed
-                        .filter((p) => p && typeof p.name === 'string' && typeof p.calories === 'number' && isFinite(p.calories))
-                        .slice(0, MAX_PRESETS)
-                        .map((p) => ({
-                            id: typeof p.id === 'number' ? p.id : Date.now() + Math.random(),
-                            name: p.name.slice(0, MAX_PRESET_NAME),
-                            calories: p.calories
-                        }));
-                }
-            } catch (e) {}
-        }
-        renderPresets();
-    }
-
-    function savePresets() {
-        try {
-            localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
-        } catch (e) {}
-        renderPresets();
     }
 
     // ===== Theme & units =====
@@ -271,89 +308,99 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== Calorie tab =====
     function updateUI() {
-        const cals = state.history[viewingDateString] || 0;
-        caloriesCurrentEl.textContent = cals;
-        if (metricGoalValEl) metricGoalValEl.textContent = state.goal;
-        if (metricMaintValEl) metricMaintValEl.textContent = state.maintenance;
+        const day = dayData(viewingDateString);
+        const expenditure = state.maintenance + day.out; // TDEE baseline + logged activity
+        // Goal is a signed balance target; the intake that hits it = expenditure +
+        // goalBalance. (Burning more lets you eat more for the same balance.)
+        const targetIn = expenditure + state.goalBalance;
 
-        const diff = state.goal - cals;
+        if (metricGoalValEl) metricGoalValEl.textContent = signed(state.goalBalance);
+        if (metricMaintValEl) metricMaintValEl.textContent = state.maintenance;
+        if (meterInValEl) meterInValEl.textContent = day.in;
+        if (meterOutValEl) meterOutValEl.textContent = expenditure;
+
+        const remaining = targetIn - day.in;
         if (caloriesLeftEl) {
-            caloriesLeftEl.textContent = diff >= 0 ? `${diff} remaining` : `${Math.abs(diff)} over`;
+            caloriesLeftEl.textContent = remaining >= 0 ? `${remaining} remaining` : `${Math.abs(remaining)} over`;
         }
 
-        let percentage = (cals / state.goal) * 100;
-        if (percentage > 100) percentage = 100;
+        // Progress bar tracks intake against the target intake, clamped to [0, 100].
+        let percentage = targetIn > 0 ? (day.in / targetIn) * 100 : (day.in > 0 ? 100 : 0);
+        percentage = Math.max(0, Math.min(100, percentage));
         if (progressBarFill) {
             progressBarFill.style.width = `${percentage}%`;
-            progressBarFill.style.background = cals > state.goal ? 'var(--danger)' : 'var(--accent-primary)';
+            progressBarFill.style.background = day.in > targetIn ? 'var(--danger)' : 'var(--accent-primary)';
         }
 
-        // Easter egg: calorie overload
-        if (cals > 10000) {
-            triggerOverload();
-        } else if (window.overloadInterval) {
-            clearInterval(window.overloadInterval);
-            window.overloadInterval = null;
-            document.querySelectorAll('.overload-window').forEach((el) => el.remove());
-        }
-
+        updateMeterHints();
+        renderLog();
         renderChart();
     }
 
-    function triggerOverload() {
-        if (window.overloadInterval) return;
-        window.overloadInterval = setInterval(() => {
-            const cals = state.history[viewingDateString] || 0;
-            if (cals <= 10000) {
-                clearInterval(window.overloadInterval);
-                window.overloadInterval = null;
-                return;
-            }
-            if (document.querySelectorAll('.overload-window').length > 20) return;
-
-            const win = document.createElement('div');
-            win.className = 'overload-window';
-            win.style.left = (Math.random() * 70) + '%';
-            win.style.top = (Math.random() * 80) + '%';
-            // Static markup only — no user data, no inline event handlers.
-            win.innerHTML = `
-                <div class="overload-header">
-                    <span>&#9888; Error</span>
-                    <span class="overload-close" role="button" tabindex="0">X</span>
-                </div>
-                <div class="overload-body">
-                    <div style="font-size:32px; margin-bottom:8px;">&#9888;&#65039;</div>
-                    <p style="color:#fff; font-size:14px; font-weight:bold; margin:0;">Notice: unknown file detected</p>
-                    <p style="color:#fff; font-size:11px; font-weight:normal; margin-top:8px;">Device security may be compromised</p>
-                    <button class="overload-btn">Scan now</button>
-                </div>`;
-            win.querySelectorAll('.overload-close, .overload-btn').forEach((b) => {
-                b.addEventListener('click', () => win.remove());
-            });
-            document.body.appendChild(win);
-        }, 120);
+    // Formats a signed integer: 0 -> "0", 300 -> "+300", -500 -> "−500".
+    function signed(n) {
+        if (n > 0) return `+${n}`;
+        if (n < 0) return `−${Math.abs(n)}`; // proper minus sign
+        return '0';
     }
 
+    // Shows a faint "+N" on each meter box reflecting what a tap would log, so the
+    // slider amount and its destinations stay visually connected.
+    function updateMeterHints() {
+        const hint = pendingAmount > 0 ? `+${pendingAmount}` : '';
+        if (meterInHintEl) meterInHintEl.textContent = hint;
+        if (meterOutHintEl) meterOutHintEl.textContent = hint;
+    }
+
+    // Diverging diff chart: each day's bar is the gap between consumption and that
+    // day's TDEE (BMR+NEAT + activity), drawn from a centre line. Above the line
+    // (surplus) is green, below (deficit) is red. Bars are only drawn on days food
+    // was logged. The centre is "you matched your burn"; the dashed line is the goal.
     function renderChart() {
         chartBarsEl.innerHTML = '';
-        if (chartLabelsRowEl) chartLabelsRowEl.innerHTML = '';
 
-        const daysToShow = 7;
+        // The chart now scrolls, so render from the earliest logged day up to the
+        // viewing day rather than a fixed week. Clamp to [7, 90]: always at least
+        // a week of columns, never an unbounded scroll on years of data.
+        const WEEK = 7;
+        const MAX_DAYS = 90;
+        const viewDForSpan = new Date(viewingDateString + 'T12:00:00');
+        let earliest = viewDForSpan;
+        Object.keys(state.history).forEach((k) => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+            const d = new Date(k + 'T12:00:00');
+            if (d < earliest) earliest = d;
+        });
+        const span = Math.round((viewDForSpan - earliest) / 86400000) + 1;
+        const daysToShow = Math.max(WEEK, Math.min(MAX_DAYS, span));
         const historyData = [];
         let weeklyDiff = 0;
         const viewD = new Date(viewingDateString + 'T12:00:00');
-        let maxCals = Math.max(state.goal, state.maintenance);
+        // Absolute calorie scale shared across the week, so the cals-out (TDEE) and
+        // goal lines can sit at each day's real level and rise/fall with that day's
+        // burn. Floor at 1 to avoid divide-by-zero on an empty week.
+        let maxVal = 1;
 
         for (let i = daysToShow - 1; i >= 0; i--) {
             const tempD = new Date(viewD.getTime() - i * 86400000);
             const dStr = getDateString(tempD);
-            const c = state.history[dStr] || 0;
-            if (c > maxCals) maxCals = c;
-            if (c > 0 && dStr < currentDateString) weeklyDiff += (c - state.maintenance);
+            const day = dayData(dStr);
+            const tdee = state.maintenance + day.out;     // cals out (BMR+NEAT + burn)
+            const goalTarget = tdee + state.goalBalance;  // intake that lands on goal
+            const intake = day.in;                        // cals in
+            const hasFood = intake > 0;
+            const balance = intake - tdee;                // + surplus (green) / − deficit (red)
+            // "This week" stays a 7-day figure even though more columns now render.
+            if (hasFood && dStr < currentDateString && i < WEEK) weeklyDiff += balance;
+            // Every line/bar we draw must fit under the scale.
+            maxVal = Math.max(maxVal, tdee, goalTarget, hasFood ? intake : 0);
             historyData.push({
                 dateStr: dStr,
-                cals: c,
-                hasEntry: c > 0,
+                tdee: tdee,
+                goalTarget: goalTarget,
+                intake: intake,
+                balance: balance,
+                hasFood: hasFood,
                 label: tempD.toLocaleDateString('en-US', { weekday: 'narrow' })
             });
         }
@@ -367,22 +414,12 @@ document.addEventListener('DOMContentLoaded', () => {
             weeklyDiffLabelEl.textContent = `This week: ${calSign}${weeklyDiff} cal, ${wtSign}${wt} ${unitName}`;
         }
 
-        // 50% headroom so bars and diff text never overlap the label.
-        const chartMax = maxCals * 1.5;
-
-        const goalPercent = Math.min((state.goal / chartMax) * 100, 100);
-        chartGoalLineEl.style.bottom = `${goalPercent}%`;
-        chartGoalLineEl.style.top = 'auto';
-
-        if (chartMaintenanceLineEl) {
-            const maintPercent = Math.min((state.maintenance / chartMax) * 100, 100);
-            chartMaintenanceLineEl.style.bottom = `${maintPercent}%`;
-            chartMaintenanceLineEl.style.top = 'auto';
-        }
+        // Map a calorie value to a height %; the largest value tops out at CHART_TOP,
+        // leaving headroom for the diff label above the tallest bar.
+        const pct = (v) => Math.max(0, Math.min(CHART_TOP, (v / maxVal) * CHART_TOP));
 
         historyData.forEach((item) => {
             const isViewingDay = item.dateStr === viewingDateString;
-            const heightPercent = item.hasEntry ? Math.min((item.cals / chartMax) * 100, 100) : 0;
 
             const col = document.createElement('div');
             col.className = `chart-col ${isViewingDay ? 'active' : ''}`;
@@ -390,111 +427,182 @@ document.addEventListener('DOMContentLoaded', () => {
             const barWrapper = document.createElement('div');
             barWrapper.className = 'chart-bar-wrapper';
 
-            const bar = document.createElement('div');
-            bar.className = `chart-bar${isViewingDay ? ' active' : ''}`;
-            bar.style.height = item.hasEntry ? `${Math.max(heightPercent, 2)}%` : '0%';
-            bar.style.position = 'relative';
+            const outH = pct(item.tdee);
+            const goalH = pct(item.goalTarget);
 
-            if (item.hasEntry) {
+            // Per-day cals-out line (solid) and goal line (dashed) — both ride with
+            // the day's burn, since goalTarget = tdee + goalBalance.
+            const outTick = document.createElement('div');
+            outTick.className = `chart-out-tick${isViewingDay ? ' active' : ''}`;
+            outTick.style.bottom = `${outH}%`;
+            barWrapper.appendChild(outTick);
+
+            const goalTick = document.createElement('div');
+            goalTick.className = 'chart-goal-tick';
+            goalTick.style.bottom = `${goalH}%`;
+            barWrapper.appendChild(goalTick);
+
+            if (item.hasFood) {
+                const intakeH = pct(item.intake);
+                const surplus = item.balance >= 0;
+                // The bar spans the gap between the cals-out line and actual intake:
+                // its length is the day's surplus/deficit magnitude.
+                const lo = Math.min(intakeH, outH);
+                const hi = Math.max(intakeH, outH);
+
+                const bar = document.createElement('div');
+                bar.className = `chart-diff-bar ${surplus ? 'surplus' : 'deficit'}${isViewingDay ? ' active' : ''}`;
+                bar.style.bottom = `${lo}%`;
+                bar.style.height = `${Math.max(hi - lo, 1)}%`;
+                barWrapper.appendChild(bar);
+
                 const diffEl = document.createElement('div');
                 diffEl.className = 'bar-diff-text';
-                const diffFromMaint = item.cals - state.maintenance;
-                const sign = diffFromMaint > 0 ? '+' : '';
-                diffEl.textContent = diffFromMaint === 0 ? '0' : `${sign}${diffFromMaint}`;
-                bar.appendChild(diffEl);
+                const sign = item.balance > 0 ? '+' : '';
+                diffEl.textContent = item.balance === 0 ? '0' : `${sign}${item.balance}`;
+                // Sit the label just past the top of the bar.
+                diffEl.style.bottom = `calc(${hi}% + 2px)`;
+                diffEl.style.top = 'auto';
+                barWrapper.appendChild(diffEl);
             }
 
-            barWrapper.appendChild(bar);
             col.appendChild(barWrapper);
-            chartBarsEl.appendChild(col);
 
-            if (chartLabelsRowEl) {
-                const labelEl = document.createElement('div');
-                labelEl.className = 'chart-label';
-                if (isViewingDay) {
-                    labelEl.style.color = 'var(--text-primary)';
-                    labelEl.style.fontWeight = '500';
-                }
-                labelEl.textContent = item.label;
-                chartLabelsRowEl.appendChild(labelEl);
+            const labelEl = document.createElement('div');
+            labelEl.className = 'chart-label';
+            if (isViewingDay) {
+                labelEl.style.color = 'var(--text-primary)';
+                labelEl.style.fontWeight = '500';
             }
+            labelEl.textContent = item.label;
+            col.appendChild(labelEl);
+
+            chartBarsEl.appendChild(col);
         });
+
+        // Land on the most recent day. Assigning past the max scrollLeft clamps,
+        // so this reliably pins the scroller to its right edge.
+        chartBarsEl.scrollLeft = chartBarsEl.scrollWidth;
     }
 
-    function adjustCalories(amount) {
-        let current = state.history[viewingDateString] || 0;
-        current = Math.max(0, Math.min(MAX_CALORIES, current + amount));
-        state.history[viewingDateString] = current;
+    // Appends an entry of the given type ('in' or 'out') to the viewing day's log.
+    function addEntry(type, amount) {
+        if (amount <= 0) return;
+        const t = type === 'out' ? 'out' : 'in';
+        // Clamp to the room left under the day's per-type cap. If the day is already
+        // at the cap, drop the entry and just reset the slider — nothing to log.
+        const current = t === 'out' ? dayData(viewingDateString).out : dayData(viewingDateString).in;
+        const room = DAILY_CAL_CAP - current;
+        if (room <= 0) {
+            setPendingAmount(0);
+            return;
+        }
+        const entries = getEntries(viewingDateString).slice();
+        entries.push({ id: nextEntryId(), t: t, a: Math.min(room, amount) });
+        state.history[viewingDateString] = entries;
 
-        caloriesCurrentEl.style.transform = 'scale(1.1)';
-        setTimeout(() => { caloriesCurrentEl.style.transform = 'scale(1)'; }, 150);
+        // Pulse the meter that just changed for tactile feedback.
+        const valEl = t === 'out' ? meterOutValEl : meterInValEl;
+        if (valEl) {
+            valEl.style.transform = 'scale(1.15)';
+            setTimeout(() => { valEl.style.transform = 'scale(1)'; }, 150);
+        }
 
+        saveState();
+        setPendingAmount(0); // reset the slider so the same tap can't double-log
+        updateUI();
+    }
+
+    // Removes one logged entry by id from the viewing day.
+    function deleteEntry(id) {
+        const entries = getEntries(viewingDateString).filter((e) => e.id !== id);
+        if (entries.length) state.history[viewingDateString] = entries;
+        else delete state.history[viewingDateString];
         saveState();
         updateUI();
     }
 
-    // Opens the add-preset modal, refusing once the preset cap is reached.
-    function openPresetModal() {
-        if (presets.length >= MAX_PRESETS) {
-            alert(`Maximum of ${MAX_PRESETS} presets allowed.`);
-            return;
-        }
-        presetNameInput.value = '';
-        presetCalInput.value = '';
-        presetModal.classList.add('active');
-        setTimeout(() => presetNameInput.focus(), 100);
+    // Directly sets a meter's total by collapsing that type's entries into a single
+    // one. `in` sets intake; `out` sets total expenditure (TDEE + activity), from
+    // which we back out the logged activity.
+    // ===== Running log =====
+    // Splits the viewing day's entries into the green (In) and red (Out) boxes,
+    // newest first, each removable via its corner ×.
+    function renderLog() {
+        if (!logListInEl || !logListOutEl) return;
+        const entries = getEntries(viewingDateString);
+        renderLogColumn(logListInEl, logEmptyInEl, entries.filter((e) => e.t !== 'out'), 'in');
+        renderLogColumn(logListOutEl, logEmptyOutEl, entries.filter((e) => e.t === 'out'), 'out');
     }
 
-    function renderPresets() {
-        presetsGrid.innerHTML = '';
-        presetsGrid.classList.toggle('editing', presetsEditMode);
+    function renderLogColumn(listEl, emptyEl, entries, type) {
+        listEl.innerHTML = '';
+        if (emptyEl) emptyEl.style.display = entries.length ? 'none' : 'block';
+        // Newest at the top without mutating the stored order.
+        entries.slice().reverse().forEach((e) => {
+            const item = document.createElement('div');
+            item.className = `log-item log-${type}`;
 
-        presets.forEach((preset) => {
-            const card = document.createElement('div');
-            card.className = 'preset-card';
+            const amt = document.createElement('span');
+            amt.className = 'log-amount';
+            amt.textContent = `${type === 'out' ? '−' : '+'}${e.a}`;
 
-            const info = document.createElement('div');
-            info.className = 'preset-info';
-            const nameEl = document.createElement('div');
-            nameEl.className = 'preset-name';
-            nameEl.textContent = preset.name; // textContent — never innerHTML for user data (XSS)
-            const calEl = document.createElement('div');
-            calEl.className = 'preset-cal';
-            calEl.textContent = `${preset.calories > 0 ? '+' : ''}${preset.calories}`;
-            info.appendChild(nameEl);
-            info.appendChild(calEl);
-            card.appendChild(info);
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'log-delete';
+            del.setAttribute('aria-label', `Remove ${type === 'out' ? 'calories out' : 'calories in'} ${e.a}`);
+            del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+            del.addEventListener('click', () => deleteEntry(e.id));
 
-            if (presetsEditMode) {
-                // Edit mode: the card is for deletion only — tapping it must not log calories.
-                const delBtn = document.createElement('button');
-                delBtn.className = 'preset-delete';
-                delBtn.setAttribute('aria-label', `Delete ${preset.name}`);
-                // Static SVG markup, no user data.
-                delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-                delBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    presets = presets.filter((p) => p.id !== preset.id);
-                    savePresets();
-                });
-                card.appendChild(delBtn);
-            } else {
-                // Normal mode: a tap goes straight to logging the preset's calories.
-                card.addEventListener('click', () => adjustCalories(preset.calories));
-            }
-
-            presetsGrid.appendChild(card);
+            item.appendChild(amt);
+            item.appendChild(del);
+            listEl.appendChild(item);
         });
+    }
 
-        // Edit mode also offers a tile for adding a preset, up to the cap.
-        if (presetsEditMode && presets.length < MAX_PRESETS) {
-            const addTile = document.createElement('button');
-            addTile.type = 'button';
-            addTile.className = 'preset-add-tile';
-            addTile.textContent = '+ Add preset';
-            addTile.addEventListener('click', openPresetModal);
-            presetsGrid.appendChild(addTile);
+    // ===== Pending-amount wheel + meters =====
+    // pendingAmount is the single source of truth: it equals the value the wheel is
+    // centered on. A meter tap logs it; logging resets the wheel back to 0.
+    // (pendingSelectedIdx / pendingScrollRaf are declared with the top-level state.)
+
+    // Builds the wheel items once (0 … PENDING_MAX, stepping by PENDING_STEP).
+    function buildPendingWheel() {
+        if (!pendingWheelScrollEl) return;
+        const frag = document.createDocumentFragment();
+        for (let v = 0; v <= PENDING_MAX; v += PENDING_STEP) {
+            const idx = v / PENDING_STEP;
+            const item = document.createElement('div');
+            item.className = 'hwheel-item';
+            item.textContent = v;
+            item.addEventListener('click', () => {
+                pendingWheelScrollEl.scrollTo({ left: idx * PENDING_ITEM_W, behavior: 'smooth' });
+            });
+            frag.appendChild(item);
         }
+        pendingWheelScrollEl.appendChild(frag);
+    }
+
+    // Visually marks the centered item. Kept separate so both the scroll handler and
+    // programmatic jumps can reuse it without re-scrolling.
+    function markPendingSelected(idx) {
+        if (!pendingWheelScrollEl) return;
+        const items = pendingWheelScrollEl.children;
+        if (pendingSelectedIdx >= 0 && items[pendingSelectedIdx]) items[pendingSelectedIdx].classList.remove('selected');
+        if (items[idx]) items[idx].classList.add('selected');
+        pendingSelectedIdx = idx;
+    }
+
+    // Programmatic set: snaps the amount to the nearest step, scrolls the wheel to
+    // it, and updates the meter hints. The resulting scroll event re-runs the
+    // handler with the same value (idempotent), so there's no feedback loop.
+    function setPendingAmount(value) {
+        let v = Math.round(value / PENDING_STEP) * PENDING_STEP;
+        v = Math.max(0, Math.min(PENDING_MAX, v));
+        pendingAmount = v;
+        const idx = v / PENDING_STEP;
+        markPendingSelected(idx);
+        if (pendingWheelScrollEl) pendingWheelScrollEl.scrollLeft = idx * PENDING_ITEM_W;
+        updateMeterHints();
     }
 
     // ===== Navigation between days / dates =====
@@ -504,9 +612,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = getDateString(d);
         if (next > currentDateString) return; // never navigate into the future
         viewingDateString = next;
-        if (typeof state.history[viewingDateString] !== 'number') {
-            state.history[viewingDateString] = 0;
-        }
         updateDateElements();
         refreshActiveView();
     }
@@ -515,11 +620,71 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
         if (dateStr > currentDateString) dateStr = currentDateString;
         viewingDateString = dateStr;
-        if (typeof state.history[viewingDateString] !== 'number') {
-            state.history[viewingDateString] = 0;
-        }
         updateDateElements();
         refreshActiveView();
+    }
+
+    // ===== Custom calendar popup =====
+    // The month currently shown in the calendar (always the 1st of that month).
+    let calViewDate = null;
+
+    function openCalendar() {
+        if (!calendarModal) return;
+        calViewDate = new Date(viewingDateString + 'T12:00:00');
+        calViewDate.setDate(1);
+        renderCalendar();
+        calendarModal.classList.add('active');
+    }
+
+    function closeCalendar() {
+        if (calendarModal) calendarModal.classList.remove('active');
+    }
+
+    function renderCalendar() {
+        if (!calGridEl || !calViewDate) return;
+        const year = calViewDate.getFullYear();
+        const month = calViewDate.getMonth();
+        calMonthLabelEl.textContent = calViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+        // getDay() on the 1st = how many blank slots precede it (0 = Sunday).
+        const leadingBlanks = new Date(year, month, 1).getDay();
+        // Day 0 of next month = last day of this month → its date is the day count.
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        calGridEl.innerHTML = '';
+        for (let i = 0; i < leadingBlanks; i++) {
+            const blank = document.createElement('div');
+            blank.className = 'cal-cell cal-blank';
+            calGridEl.appendChild(blank);
+        }
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = getDateString(new Date(year, month, d));
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'cal-cell cal-day';
+            cell.textContent = d;
+            if (dateStr > currentDateString) {
+                cell.disabled = true; // no logging the future
+            } else {
+                cell.addEventListener('click', () => { jumpToDate(dateStr); closeCalendar(); });
+            }
+            if (dateStr === currentDateString) cell.classList.add('cal-today');
+            if (dateStr === viewingDateString) cell.classList.add('cal-selected');
+            calGridEl.appendChild(cell);
+        }
+
+        // Block paging past the current month, since future days aren't selectable.
+        if (calNextMonthEl) {
+            const today = new Date(currentDateString + 'T12:00:00');
+            calNextMonthEl.disabled = year === today.getFullYear() && month === today.getMonth();
+        }
+    }
+
+    function shiftCalendarMonth(delta) {
+        if (!calViewDate) return;
+        if (delta > 0 && calNextMonthEl && calNextMonthEl.disabled) return;
+        calViewDate.setMonth(calViewDate.getMonth() + delta);
+        renderCalendar();
     }
 
     // Re-render whichever tab is currently visible. Day/date navigation must refresh
@@ -560,6 +725,63 @@ document.addEventListener('DOMContentLoaded', () => {
         return { slopePerDay: num / den };
     }
 
+    // Calibrate maintenance (BMR+NEAT) from the past 30 days. Energy balance says
+    //   Δweight_kcal = Σ(intake − maintenance − activity)
+    // Solving for a constant maintenance over N logged days:
+    //   maintenance = avgIntake − avgActivity − (weightSlopePerDay × calPerUnit)
+    // The slope comes from the noise-robust regression; the averages come from days
+    // you actually logged food. Assumption: logged days are representative of all
+    // days (unlogged days bias the average), so we gate on enough data first.
+    function computeMaintenanceEstimate() {
+        const trend = computeWeightTrend();
+        if (!trend) return null; // needs ≥3 weight points to have a real slope
+        const cutoff = new Date(currentDateString + 'T12:00:00').getTime() - 30 * 86400000;
+        let sumIn = 0;
+        let sumOut = 0;
+        let nDays = 0;
+        Object.keys(state.history).forEach((dStr) => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return;
+            const t = new Date(dStr + 'T12:00:00').getTime();
+            if (t < cutoff || dStr > currentDateString) return;
+            const day = dayData(dStr);
+            if (day.in <= 0) return; // only days with food logged inform avg intake
+            sumIn += day.in;
+            sumOut += day.out;
+            nDays += 1;
+        });
+        if (nDays < 10) return null; // too few logged days to trust the estimate
+        const cpu = state.unit === 'metric' ? 7700 : 3500; // cal per kg / per lb
+        const slopeKcal = trend.slopePerDay * cpu;          // daily balance, in cal
+        let est = (sumIn - sumOut) / nDays - slopeKcal;
+        est = Math.max(800, Math.min(9000, Math.round(est / 10) * 10)); // sane, rounded
+        return { est, current: state.maintenance, delta: est - state.maintenance, nDays };
+    }
+
+    // The "should-be" weight curve: start from your first logged weight in the
+    // visible window, then walk forward day by day adding each day's energy balance
+    // (intake − maintenance − activity) converted to weight units. This is where
+    // your weight *should* sit given what you ate and your assumed maintenance;
+    // divergence from the real line is exactly the maintenance error.
+    function computeShouldBeCurve(allSlots) {
+        const cpu = state.unit === 'metric' ? 7700 : 3500;
+        const anchor = allSlots.find((s) => s.weight !== null);
+        if (!anchor) return [];
+        const out = [];
+        let predicted = anchor.weight;
+        for (const slot of allSlots) {
+            if (slot.future) break;                       // intake unknown past today
+            if (slot.slotIndex < anchor.slotIndex) continue;
+            if (slot.slotIndex !== anchor.slotIndex) {
+                const day = dayData(slot.dateStr);
+                // Unlogged days move nothing — we have no intake to score them.
+                const balanceKcal = day.in > 0 ? day.in - state.maintenance - day.out : 0;
+                predicted += balanceKcal / cpu;
+            }
+            out.push({ slotIndex: slot.slotIndex, weight: predicted });
+        }
+        return out;
+    }
+
     function straightPath(pts) {
         if (pts.length < 2) return '';
         return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
@@ -594,7 +816,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const pathLine = document.getElementById('weight-chart-line');
         const maLineEl = document.getElementById('weight-ma-line');
         const projLineEl = document.getElementById('weight-projection-line');
+        const shouldBeLineEl = document.getElementById('weight-shouldbe-line');
         const summaryEl = document.getElementById('weight-projection-summary');
+        const maintSummaryEl = document.getElementById('weight-maint-summary');
         const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
 
         const daysMap = { week: 7, month: 30, year: 365 };
@@ -664,6 +888,24 @@ document.addEventListener('DOMContentLoaded', () => {
             summaryEl.style.display = txt ? '' : 'none';
         }
 
+        // Maintenance calibration: tell the user whether their BMR+NEAT looks off,
+        // and explain the gray dashed line they're now seeing.
+        if (maintSummaryEl) {
+            const m = computeMaintenanceEstimate();
+            if (m) {
+                const absDelta = Math.abs(m.delta);
+                if (absDelta < 75) {
+                    maintSummaryEl.textContent = `Dashed = weight predicted from intake. Your last ${m.nDays} logged days imply maintenance ≈ ${m.est} cal — close to your ${m.current}. ✓`;
+                } else {
+                    const dir = m.delta > 0 ? 'higher' : 'lower';
+                    maintSummaryEl.textContent = `Dashed = weight predicted from intake. Your last ${m.nDays} logged days imply maintenance ≈ ${m.est} cal — ${absDelta} ${dir} than your ${m.current}.`;
+                }
+                maintSummaryEl.style.display = '';
+            } else {
+                maintSummaryEl.style.display = 'none';
+            }
+        }
+
         // Reset chart elements. dotsEl also contains the persistent scrubber dot,
         // so clear only the data dots, not the whole container.
         if (xAxisEl) xAxisEl.innerHTML = '';
@@ -671,6 +913,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dotsEl) dotsEl.querySelectorAll('.weight-dot').forEach((d) => d.remove());
         if (maLineEl) maLineEl.setAttribute('d', '');
         if (projLineEl) projLineEl.style.display = 'none';
+        if (shouldBeLineEl) { shouldBeLineEl.setAttribute('d', ''); shouldBeLineEl.style.display = 'none'; }
 
         if (dataPoints.length < 2) {
             pathLine.setAttribute('d', '');
@@ -680,7 +923,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (emptyEl) emptyEl.style.display = 'none';
 
-        // Y range with padding — include the projected endpoint so it stays on-canvas.
+        // "Should-be" weight from intake. Skip on the year view (a 365-day cumulative
+        // can drift far enough to swamp the axis) to match the projection's behavior.
+        const shouldBe = currentWeightRange !== 'year' ? computeShouldBeCurve(allSlots) : [];
+
+        // Y range with padding — fold in the projected endpoint and the should-be
+        // curve so neither runs off-canvas.
         let maxW = Math.max(...dataPoints.map((p) => p.weight));
         let minW = Math.min(...dataPoints.map((p) => p.weight));
         if (allowProjection && extraDays > 0) {
@@ -688,6 +936,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const projEnd = lastReal.weight + trend.slopePerDay * ((days - 1 + extraDays) - lastReal.slotIndex);
             maxW = Math.max(maxW, projEnd);
             minW = Math.min(minW, projEnd);
+        }
+        if (shouldBe.length) {
+            maxW = Math.max(maxW, ...shouldBe.map((s) => s.weight));
+            minW = Math.min(minW, ...shouldBe.map((s) => s.weight));
         }
         const yPad = Math.max((maxW - minW) * 0.2, 1);
         maxW += yPad;
@@ -753,6 +1005,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return { x: pt.x, y: 100 - ((avg - minW) / yRange) * 100 };
             });
             maLineEl.setAttribute('d', straightPath(maPts));
+        }
+
+        // Should-be line — predicted weight from intake, same coordinate mapping.
+        if (shouldBeLineEl) {
+            if (shouldBe.length >= 2) {
+                const sbPts = shouldBe.map((s) => ({
+                    x: (s.slotIndex / xRange) * 100,
+                    y: 100 - ((s.weight - minW) / yRange) * 100
+                }));
+                shouldBeLineEl.setAttribute('d', straightPath(sbPts));
+                shouldBeLineEl.style.display = '';
+            } else {
+                shouldBeLineEl.setAttribute('d', '');
+                shouldBeLineEl.style.display = 'none';
+            }
         }
 
         // Projection line — extends the trend from the last real point forward.
@@ -916,42 +1183,101 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Opens the shared number-entry modal for a given day. Empty value clears
-    // the entry; otherwise it must be within the sane weight bounds.
-    function openWeightEntryModal(dateStr) {
-        const modal = document.getElementById('weight-edit-modal');
-        const input = document.getElementById('weight-edit-input');
-        const title = document.getElementById('weight-edit-modal-title');
-        if (!modal || !input) return;
-        const label = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        if (title) title.textContent = dateStr === currentDateString ? 'Log weight · Today' : `Log weight · ${label}`;
-        const existing = state.weightHistory[dateStr];
-        input.value = typeof existing === 'number' ? existing : '';
-        modal._editDateStr = dateStr;
-        modal.classList.add('active');
-        setTimeout(() => input.focus(), 100);
+    // ===== Weight wheel picker (the vertical scroll in the entry modal) =====
+    const PICKER_ROW_H = 40;        // must match .weight-picker-row height in CSS
+    const PICKER_STEP = 0.1;        // one row per 0.1 weight unit
+    let pickerValues = [];          // the value sitting at each row, in order
+    let pickerSelectedIdx = -1;     // index of the centered (selected) row
+    let pickerScrollRaf = 0;        // rAF handle to throttle the scroll handler
+
+    // The most recent logged weight strictly before `dateStr`, or null. Seeds the
+    // wheel so it opens on "yesterday's" number and you nudge up/down from there.
+    function nearestPriorWeight(dateStr) {
+        const priorKeys = Object.keys(state.weightHistory).filter((k) => k < dateStr).sort();
+        if (!priorKeys.length) return null;
+        return state.weightHistory[priorKeys[priorKeys.length - 1]];
     }
 
-    // Replaces the browsers' native number-input spinners with typeface-consistent,
-    // larger, keyboard-accessible -/+ buttons. Each button steps by the input's
-    // `step` attribute (default 1) and never goes below zero. The native arrow-key
-    // stepping on the input still works too.
-    function setupSteppers() {
-        document.querySelectorAll('.stepper').forEach((stepper) => {
-            const input = stepper.querySelector('input');
-            if (!input) return;
-            const step = parseFloat(input.getAttribute('step')) || 1;
-            const decimals = (String(step).split('.')[1] || '').length;
-            stepper.querySelectorAll('.stepper-btn').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    const dir = parseFloat(btn.dataset.dir) || 0;
-                    let val = parseFloat(input.value);
-                    if (isNaN(val)) val = 0;
-                    val = Math.max(0, val + dir * step);
-                    // toFixed rounds for display and absorbs float drift (0.1 + 0.1 + 0.1).
-                    input.value = decimals > 0 ? val.toFixed(decimals) : String(Math.round(val));
-                });
+    // Builds the row column spanning center ± span (clamped to sane bounds) and
+    // returns the index whose value equals `center`, so the caller can scroll to it.
+    function buildWeightPicker(center) {
+        const scrollEl = document.getElementById('weight-picker-scroll');
+        if (!scrollEl) return 0;
+        const span = state.unit === 'metric' ? 25 : 50; // ± window around the seed
+        const lo = Math.max(MIN_WEIGHT, Math.round((center - span) * 10) / 10);
+        const hi = Math.min(MAX_WEIGHT, Math.round((center + span) * 10) / 10);
+        // Integer row count + index-based values, so float drift can't accumulate
+        // across hundreds of 0.1 additions.
+        const count = Math.round((hi - lo) / PICKER_STEP) + 1;
+
+        pickerValues = [];
+        const frag = document.createDocumentFragment();
+        let centerIdx = 0;
+        for (let i = 0; i < count; i++) {
+            const val = Math.round((lo + i * PICKER_STEP) * 10) / 10;
+            pickerValues.push(val);
+            if (Math.abs(val - center) < PICKER_STEP / 2) centerIdx = i;
+            const row = document.createElement('div');
+            row.className = 'wheel-row';
+            row.textContent = val.toFixed(1);
+            // Tapping a row snaps it to the center selection.
+            row.addEventListener('click', () => {
+                scrollEl.scrollTo({ top: i * PICKER_ROW_H, behavior: 'smooth' });
             });
+            frag.appendChild(row);
+        }
+        scrollEl.innerHTML = '';
+        scrollEl.appendChild(frag);
+        pickerSelectedIdx = -1;
+        return centerIdx;
+    }
+
+    // Marks whichever row is centered under the highlight band as selected, and
+    // records its value. Snap maps scrollTop to an exact row, so rounding is safe.
+    function updateWeightPickerSelection() {
+        const scrollEl = document.getElementById('weight-picker-scroll');
+        if (!scrollEl || !pickerValues.length) return;
+        let idx = Math.round(scrollEl.scrollTop / PICKER_ROW_H);
+        idx = Math.max(0, Math.min(pickerValues.length - 1, idx));
+        if (idx === pickerSelectedIdx) return;
+        const rows = scrollEl.children;
+        if (pickerSelectedIdx >= 0 && rows[pickerSelectedIdx]) rows[pickerSelectedIdx].classList.remove('selected');
+        if (rows[idx]) rows[idx].classList.add('selected');
+        pickerSelectedIdx = idx;
+    }
+
+    // Opens the weight-entry modal for a given day. The wheel seeds on the day's
+    // existing value, else the previous day's weight, else a unit-sane default.
+    function openWeightEntryModal(dateStr) {
+        const modal = document.getElementById('weight-edit-modal');
+        const scrollEl = document.getElementById('weight-picker-scroll');
+        const title = document.getElementById('weight-edit-modal-title');
+        const unitEl = document.getElementById('weight-picker-unit');
+        const clearBtn = document.getElementById('btn-clear-weight-edit');
+        if (!modal || !scrollEl) return;
+
+        const label = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (title) title.textContent = dateStr === currentDateString ? 'Log weight · Today' : `Log weight · ${label}`;
+        if (unitEl) unitEl.textContent = state.unit === 'metric' ? 'kg' : 'lbs';
+
+        const existing = state.weightHistory[dateStr];
+        // ?? (nullish coalescing): use the prior weight only when it exists, else
+        // fall through to the default — 0 would be a valid prior, so || won't do.
+        const seed = typeof existing === 'number'
+            ? existing
+            : (nearestPriorWeight(dateStr) ?? (state.unit === 'metric' ? 70 : 150));
+        const centerIdx = buildWeightPicker(Math.round(seed * 10) / 10);
+
+        // Only offer "remove" when there's an entry to remove.
+        if (clearBtn) clearBtn.style.display = typeof existing === 'number' ? 'block' : 'none';
+
+        modal._editDateStr = dateStr;
+        modal.classList.add('active');
+        // Defer the scroll: snapping needs the modal to have a resolved layout box,
+        // which only happens after .active makes it visible and paints.
+        requestAnimationFrame(() => {
+            scrollEl.scrollTop = centerIdx * PICKER_ROW_H;
+            updateWeightPickerSelection();
         });
     }
 
@@ -962,82 +1288,75 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNextDay.addEventListener('click', () => { if (!btnNextDay.disabled) shiftDay(1); });
 
         // Calendar popup: click the date title to jump to any past date.
-        if (dateTitlesEl && datePickerEl) {
-            datePickerEl.max = currentDateString;
-            dateTitlesEl.addEventListener('click', () => {
-                datePickerEl.value = viewingDateString;
-                // showPicker() is the modern API; fall back to focus()+click() for older browsers.
-                try {
-                    datePickerEl.showPicker();
-                } catch (e) {
-                    datePickerEl.focus();
-                    datePickerEl.click();
-                }
+        if (dateTitlesEl) {
+            dateTitlesEl.addEventListener('click', openCalendar);
+            // The title is role="button"; keep it keyboard-operable.
+            dateTitlesEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCalendar(); }
             });
-            datePickerEl.addEventListener('change', () => jumpToDate(datePickerEl.value));
         }
+        if (calPrevMonthEl) calPrevMonthEl.addEventListener('click', () => shiftCalendarMonth(-1));
+        if (calNextMonthEl) calNextMonthEl.addEventListener('click', () => shiftCalendarMonth(1));
 
-        // Quick calorie actions
-        btnMinus100.addEventListener('click', () => adjustCalories(-100));
-        btnMinus50.addEventListener('click', () => adjustCalories(-50));
-        btnPlus50.addEventListener('click', () => adjustCalories(50));
-        btnPlus100.addEventListener('click', () => adjustCalories(100));
+        // Pending-amount wheel: scrolling sets the amount; an In/Out box tap logs it.
+        buildPendingWheel();
+        if (pendingWheelScrollEl) {
+            pendingWheelScrollEl.addEventListener('scroll', () => {
+                if (pendingScrollRaf) return;        // collapse a flick's events to one/frame
+                pendingScrollRaf = requestAnimationFrame(() => {
+                    pendingScrollRaf = 0;
+                    let idx = Math.round(pendingWheelScrollEl.scrollLeft / PENDING_ITEM_W);
+                    idx = Math.max(0, Math.min((PENDING_MAX / PENDING_STEP), idx));
+                    if (idx !== pendingSelectedIdx) markPendingSelected(idx);
+                    pendingAmount = idx * PENDING_STEP;   // set directly; don't re-scroll
+                    updateMeterHints();
+                });
+            }, { passive: true });
+        }
+        setPendingAmount(0);
 
-        // Calorie total modal
-        caloriesCurrentEl.addEventListener('click', () => {
-            caloriesInput.value = state.history[viewingDateString] || 0;
-            caloriesModal.classList.add('active');
-            setTimeout(() => caloriesInput.focus(), 100);
-        });
-        btnCancelCalories.addEventListener('click', () => caloriesModal.classList.remove('active'));
-        btnSaveCalories.addEventListener('click', () => {
-            const newCals = parseInt(caloriesInput.value, 10);
-            if (!isNaN(newCals) && newCals >= 0 && newCals <= MAX_CALORIES) {
-                state.history[viewingDateString] = newCals;
-                saveState();
-                updateUI();
-            }
-            caloriesModal.classList.remove('active');
-        });
+        // Tapping a meter box logs the pending amount to that meter.
+        if (meterInEl) meterInEl.addEventListener('click', () => addEntry('in', pendingAmount));
+        if (meterOutEl) meterOutEl.addEventListener('click', () => addEntry('out', pendingAmount));
 
-        // Goal modal (stepper)
+        // Goal modal (stepper). Goal is a signed daily balance (intake − expenditure):
+        // negative = deficit, 0 = maintain, positive = surplus.
         const goalDisplay = document.getElementById('goal-display');
         const goalModalNote = document.getElementById('goal-modal-note');
-        let goalVal = state.goal;
+        let goalVal = state.goalBalance;
         function updateGoalModal() {
-            goalDisplay.textContent = goalVal;
-            const diff = goalVal - state.maintenance;
-            const dir = diff > 0 ? 'gain' : diff < 0 ? 'lose' : 'maintain';
+            goalDisplay.textContent = signed(goalVal);
+            const dir = goalVal > 0 ? 'gain' : goalVal < 0 ? 'lose' : 'maintain';
             if (dir === 'maintain') {
-                goalModalNote.textContent = 'Based on your TDEE, you are set to maintain your weight.';
+                goalModalNote.textContent = 'A balance of 0 means you eat exactly what you burn — maintaining your weight.';
             } else {
                 const isMetric = state.unit === 'metric';
                 const divisor = isMetric ? 7700 : 3500;
                 const unitName = isMetric ? 'kg' : 'pound';
                 const unitNamePlural = isMetric ? 'kg' : 'pounds';
-                const weightPerWeek = Math.abs(diff * 7 / divisor).toFixed(1);
+                const weightPerWeek = Math.abs(goalVal * 7 / divisor).toFixed(1);
                 const unitString = weightPerWeek === '1.0' ? unitName : unitNamePlural;
-                goalModalNote.textContent = `Based on your TDEE, you can expect to ${dir} ${weightPerWeek} ${unitString} per week.`;
+                goalModalNote.textContent = `At ${signed(goalVal)} cal/day you can expect to ${dir} ${weightPerWeek} ${unitString} per week.`;
             }
         }
         if (metricGoalEl) {
             metricGoalEl.addEventListener('click', () => {
-                goalVal = state.goal;
+                goalVal = state.goalBalance;
                 updateGoalModal();
                 goalModal.classList.add('active');
             });
         }
         document.getElementById('btn-goal-minus-50').addEventListener('click', () => {
-            goalVal = Math.max(500, goalVal - 50);
+            goalVal = Math.max(-GOAL_BALANCE_LIMIT, goalVal - 50);
             updateGoalModal();
         });
         document.getElementById('btn-goal-plus-50').addEventListener('click', () => {
-            goalVal = Math.min(9000, goalVal + 50);
+            goalVal = Math.min(GOAL_BALANCE_LIMIT, goalVal + 50);
             updateGoalModal();
         });
         btnCancelGoal.addEventListener('click', () => goalModal.classList.remove('active'));
         btnSaveGoal.addEventListener('click', () => {
-            state.goal = goalVal;
+            state.goalBalance = goalVal;
             saveState();
             updateUI();
             goalModal.classList.remove('active');
@@ -1069,31 +1388,8 @@ document.addEventListener('DOMContentLoaded', () => {
             maintModal.classList.remove('active');
         });
 
-        // Preset modal
-        // Presets: the header button toggles edit mode (delete + add); the
-        // add tile rendered inside edit mode opens the modal below.
-        btnEditPresets.addEventListener('click', () => {
-            presetsEditMode = !presetsEditMode;
-            btnEditPresets.textContent = presetsEditMode ? 'Done' : 'Edit';
-            renderPresets();
-        });
-        btnCancelPreset.addEventListener('click', () => presetModal.classList.remove('active'));
-        btnSavePreset.addEventListener('click', () => {
-            if (presets.length >= MAX_PRESETS) {
-                alert(`Maximum of ${MAX_PRESETS} presets allowed.`);
-                return;
-            }
-            const name = presetNameInput.value.trim().slice(0, MAX_PRESET_NAME);
-            const cal = parseInt(presetCalInput.value, 10);
-            if (name && !isNaN(cal) && cal !== 0 && Math.abs(cal) <= MAX_CALORIES) {
-                presets.push({ id: Date.now(), name, calories: cal });
-                savePresets();
-            }
-            presetModal.classList.remove('active');
-        });
-
         // Close modals on overlay click
-        [caloriesModal, goalModal, maintModal, presetModal].forEach((modal) => {
+        [calendarModal, goalModal, maintModal].forEach((modal) => {
             if (modal) {
                 modal.addEventListener('click', (e) => {
                     if (e.target === modal) modal.classList.remove('active');
@@ -1101,8 +1397,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        caloriesCurrentEl.style.transition = 'transform 0.15s ease-out';
-        setupSteppers();
+        // Smooth pulse on the meter values when an entry is logged.
+        if (meterInValEl) meterInValEl.style.transition = 'transform 0.15s ease-out';
+        if (meterOutValEl) meterOutValEl.style.transition = 'transform 0.15s ease-out';
         setupTabsSettingsAndWeight();
     }
 
@@ -1223,9 +1520,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const dotEditBtn = document.getElementById('weight-dot-edit-btn');
         const dotDeleteBtn = document.getElementById('weight-dot-delete-btn');
         const weightEditModal = document.getElementById('weight-edit-modal');
-        const weightEditInput = document.getElementById('weight-edit-input');
         const btnSaveWeightEdit = document.getElementById('btn-save-weight-edit');
         const btnCancelWeightEdit = document.getElementById('btn-cancel-weight-edit');
+        const btnClearWeightEdit = document.getElementById('btn-clear-weight-edit');
+        const pickerScrollEl = document.getElementById('weight-picker-scroll');
+
+        // Update the selected (centered) value as the wheel scrolls. rAF-throttled
+        // so a fast flick fires the work once per frame, not per scroll event.
+        if (pickerScrollEl) {
+            pickerScrollEl.addEventListener('scroll', () => {
+                if (pickerScrollRaf) return;
+                pickerScrollRaf = requestAnimationFrame(() => {
+                    pickerScrollRaf = 0;
+                    updateWeightPickerSelection();
+                });
+            }, { passive: true });
+        }
 
         function updateScrubber(clientX) {
             if (!currentSvgPts || currentSvgPts.length === 0) return null;
@@ -1358,25 +1668,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnSaveWeightEdit) {
             btnSaveWeightEdit.addEventListener('click', () => {
                 const dateStr = weightEditModal._editDateStr;
-                if (dateStr) {
-                    const raw = weightEditInput.value.trim();
-                    if (raw === '') {
-                        delete state.weightHistory[dateStr]; // empty input clears the entry
-                    } else {
-                        const val = parseFloat(raw);
-                        if (!isNaN(val) && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
-                            state.weightHistory[dateStr] = val;
-                        }
+                // The selected value is whichever row the wheel is centered on.
+                if (dateStr && pickerSelectedIdx >= 0) {
+                    const val = pickerValues[pickerSelectedIdx];
+                    if (typeof val === 'number' && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
+                        state.weightHistory[dateStr] = val;
+                        saveState();
+                        refreshWeightSheet();
+                        renderWeightTab();
                     }
-                    saveState();
-                    refreshWeightSheet();
-                    renderWeightTab();
                 }
                 weightEditModal.classList.remove('active');
             });
         }
         if (btnCancelWeightEdit) {
             btnCancelWeightEdit.addEventListener('click', () => weightEditModal.classList.remove('active'));
+        }
+        // The wheel has no empty state, so clearing an entry gets its own button
+        // (only shown when the day already has a logged weight).
+        if (btnClearWeightEdit) {
+            btnClearWeightEdit.addEventListener('click', () => {
+                const dateStr = weightEditModal._editDateStr;
+                if (dateStr) {
+                    delete state.weightHistory[dateStr];
+                    saveState();
+                    refreshWeightSheet();
+                    renderWeightTab();
+                }
+                weightEditModal.classList.remove('active');
+            });
         }
         if (weightEditModal) {
             weightEditModal.addEventListener('click', (e) => {
