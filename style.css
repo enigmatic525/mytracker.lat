@@ -69,9 +69,11 @@ body {
     padding: 24px 24px 100px;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;            /* compressed from 24px so the controls pack tighter */
     height: 100vh;
-    overflow-y: auto;
+    /* The page itself never scrolls — content is laid out to fit the viewport and
+       only the log boxes scroll internally (see .log-list). */
+    overflow: hidden;
     box-sizing: border-box;
 }
 
@@ -83,7 +85,7 @@ body {
 
 /* Header & Navigation */
 .header {
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .date-nav {
@@ -306,7 +308,7 @@ body {
     position: relative;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    padding: 14px 12px 16px;
+    padding: 10px 12px 11px;
     text-align: center;
     cursor: pointer;
     transition: var(--transition);
@@ -341,11 +343,11 @@ body {
     font-size: 12px;
     color: var(--text-secondary);
     font-weight: var(--font-weight-regular);
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
 .meter-val {
-    font-size: 26px;
+    font-size: 22px;
     font-weight: var(--font-weight-light);
     line-height: 1;
     color: var(--text-primary);
@@ -358,8 +360,8 @@ body {
 
 /* "+N" preview of what a tap will log; empty (hidden) when the slider is at 0. */
 .meter-add-hint {
-    height: 14px;
-    margin-top: 4px;
+    height: 10px;
+    margin-top: 2px;
     font-size: 12px;
     font-weight: var(--font-weight-medium);
     font-variant-numeric: tabular-nums;
@@ -380,6 +382,10 @@ body {
 .log-boxes {
     display: flex;
     gap: 12px;
+    /* Absorb the leftover vertical space in the tab so the entry boxes — and only
+       the entry boxes — provide the page's scrolling. */
+    flex: 1;
+    min-height: 0;
 }
 
 .log-box {
@@ -387,8 +393,11 @@ body {
     min-width: 0;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    padding: 8px;
-    min-height: 56px;
+    padding: 6px;
+    min-height: 40px;
+    /* Column so the inner list can flex to the box height and scroll. */
+    display: flex;
+    flex-direction: column;
 }
 
 .log-box-in {
@@ -405,9 +414,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    /* Cap the list so a long day scrolls inside its box instead of stretching
-       the page past the phone viewport. ~6 entries before scrolling kicks in. */
-    max-height: 192px;
+    /* Fill the box and scroll inside it: the page is locked, so a long day's
+       entries scroll here rather than growing the page past the viewport. */
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -426,7 +436,7 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 6px;
-    padding: 6px 8px 6px 12px;
+    padding: 4px 8px 4px 12px;
     font-variant-numeric: tabular-nums;
 }
 
@@ -629,8 +639,8 @@ body {
 .hwheel {
     position: relative;
     width: 100%;
-    height: 56px;
-    margin: 4px 0;
+    height: 40px;
+    margin: 2px 0;
     /* Fade the left/right edges so off-center values dissolve out. */
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%);
     mask-image: linear-gradient(to right, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%);
@@ -851,18 +861,18 @@ body {
 @media (max-width: 480px) {
     .app-container {
         padding: 24px 16px;
-        gap: 24px;
+        gap: 16px;
     }
 }
 
 @media (max-width: 380px) {
     .app-container {
         padding: 16px 8px;
-        gap: 20px;
+        gap: 14px;
     }
 
     .meter-val {
-        font-size: 22px;
+        font-size: 20px;
     }
 
     .date-titles h1 {
@@ -873,17 +883,20 @@ body {
 .tab-pane {
     display: none;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
     animation: fadeIn 0.2s ease-out;
 }
 
 .tab-pane.active {
     display: flex;
+    /* Fill the tabs-container so the log boxes can absorb the leftover height. */
+    flex: 1;
+    min-height: 0;
 }
 
 #tab-weight.active {
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
 }
 
 #weight-chart-section {
@@ -1249,10 +1262,11 @@ body {
     font-weight: var(--font-weight-light);
 }
 
-/* App container bottom padding for fixed nav */
+/* App container bottom padding clears the fixed bottom nav (which carries its own
+   safe-area inset). The page stays locked; only .log-list scrolls. */
 .app-container {
-    padding-bottom: 120px;
-    overflow-y: auto;
+    padding-bottom: 84px;
+    overflow: hidden;
     max-height: 100vh;
 }
 

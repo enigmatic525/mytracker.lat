@@ -49,7 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // burned on top of TDEE. Total expenditure for a day is maintenance + out.
     let state = {
         goalBalance: defaultGoalBalance,
+        // `maintenance` is the baseline BMR+NEAT used for days before any dated
+        // change. `maintenanceHistory` holds dated breakpoints: editing BMR+NEAT
+        // while viewing a day writes a breakpoint there, so the change applies from
+        // that day forward without rewriting earlier days. See maintenanceFor().
         maintenance: defaultMaintenance,
+        maintenanceHistory: {}, // { 'YYYY-MM-DD': value } — "effective from this date"
         history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
         theme: 'light',       // 'light' | 'dark'
@@ -184,6 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state = {
                     goalBalance: Math.max(-GOAL_BALANCE_LIMIT, Math.min(GOAL_BALANCE_LIMIT, goalBalance)),
                     maintenance: maintenance,
+                    maintenanceHistory: sanitizeMaintenanceMap(p.maintenanceHistory),
                     history: sanitizeHistoryMap(p.history),
                     weightHistory: sanitizeNumberMap(p.weightHistory),
                     theme: p.theme === 'dark' ? 'dark' : 'light',
@@ -206,6 +212,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         applyThemeAndUnits();
+    }
+
+    // Keep only 'YYYY-MM-DD' -> in-range maintenance breakpoints, clamped to the
+    // same bounds the stepper enforces so a hand-edited blob can't inject a wild value.
+    function sanitizeMaintenanceMap(obj) {
+        const out = {};
+        if (obj && typeof obj === 'object') {
+            Object.keys(obj).forEach((k) => {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof obj[k] === 'number' && isFinite(obj[k])) {
+                    out[k] = Math.max(500, Math.min(9000, Math.round(obj[k])));
+                }
+            });
+        }
+        return out;
     }
 
     // Keep only 'YYYY-MM-DD' -> finite-number pairs from an untrusted object.
@@ -264,6 +284,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return { in: inSum, out: outSum };
     }
 
+    // The BMR+NEAT in effect on `dateStr`: the latest dated breakpoint on or before
+    // that day, or the baseline if the day predates every breakpoint. Keys are
+    // 'YYYY-MM-DD', which sort lexicographically, so a string compare gives the
+    // right chronological order without parsing dates.
+    function maintenanceFor(dateStr) {
+        let bestKey = '';
+        Object.keys(state.maintenanceHistory).forEach((k) => {
+            if (k <= dateStr && k > bestKey) bestKey = k;
+        });
+        return bestKey ? state.maintenanceHistory[bestKey] : state.maintenance;
+    }
+
     function saveState() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -309,13 +341,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== Calorie tab =====
     function updateUI() {
         const day = dayData(viewingDateString);
-        const expenditure = state.maintenance + day.out; // TDEE baseline + logged activity
+        const maint = maintenanceFor(viewingDateString);  // effective BMR+NEAT for this day
+        const expenditure = maint + day.out; // TDEE baseline + logged activity
         // Goal is a signed balance target; the intake that hits it = expenditure +
         // goalBalance. (Burning more lets you eat more for the same balance.)
         const targetIn = expenditure + state.goalBalance;
 
         if (metricGoalValEl) metricGoalValEl.textContent = signed(state.goalBalance);
-        if (metricMaintValEl) metricMaintValEl.textContent = state.maintenance;
+        if (metricMaintValEl) metricMaintValEl.textContent = maint;
         if (meterInValEl) meterInValEl.textContent = day.in;
         if (meterOutValEl) meterOutValEl.textContent = expenditure;
 
@@ -385,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tempD = new Date(viewD.getTime() - i * 86400000);
             const dStr = getDateString(tempD);
             const day = dayData(dStr);
-            const tdee = state.maintenance + day.out;     // cals out (BMR+NEAT + burn)
+            const tdee = maintenanceFor(dStr) + day.out;  // cals out (BMR+NEAT + burn)
             const goalTarget = tdee + state.goalBalance;  // intake that lands on goal
             const intake = day.in;                        // cals in
             const hasFood = intake > 0;
@@ -754,7 +787,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const slopeKcal = trend.slopePerDay * cpu;          // daily balance, in cal
         let est = (sumIn - sumOut) / nDays - slopeKcal;
         est = Math.max(800, Math.min(9000, Math.round(est / 10) * 10)); // sane, rounded
-        return { est, current: state.maintenance, delta: est - state.maintenance, nDays };
+        // Compare against today's effective baseline (maintenance can now vary by day).
+        const current = maintenanceFor(currentDateString);
+        return { est, current, delta: est - current, nDays };
     }
 
     // The "should-be" weight curve: start from your first logged weight in the
@@ -774,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (slot.slotIndex !== anchor.slotIndex) {
                 const day = dayData(slot.dateStr);
                 // Unlogged days move nothing — we have no intake to score them.
-                const balanceKcal = day.in > 0 ? day.in - state.maintenance - day.out : 0;
+                const balanceKcal = day.in > 0 ? day.in - maintenanceFor(slot.dateStr) - day.out : 0;
                 predicted += balanceKcal / cpu;
             }
             out.push({ slotIndex: slot.slotIndex, weight: predicted });
@@ -1362,13 +1397,21 @@ document.addEventListener('DOMContentLoaded', () => {
             goalModal.classList.remove('active');
         });
 
-        // TDEE modal (stepper)
+        // BMR+NEAT modal (stepper). A change applies from the viewing day forward,
+        // so it edits a dated breakpoint rather than the single global baseline.
         const maintDisplay = document.getElementById('maint-display');
+        const maintScopeEl = document.getElementById('maint-modal-scope');
         let maintVal = state.maintenance;
         if (metricMaintEl) {
             metricMaintEl.addEventListener('click', () => {
-                maintVal = state.maintenance;
+                maintVal = maintenanceFor(viewingDateString); // seed on the day's current value
                 maintDisplay.textContent = maintVal;
+                if (maintScopeEl) {
+                    const label = new Date(viewingDateString + 'T12:00:00')
+                        .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const when = viewingDateString === currentDateString ? 'today' : label;
+                    maintScopeEl.textContent = `Applies from ${when} onward — earlier days keep their value.`;
+                }
                 maintModal.classList.add('active');
             });
         }
@@ -1382,9 +1425,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         btnCancelMaint.addEventListener('click', () => maintModal.classList.remove('active'));
         btnSaveMaint.addEventListener('click', () => {
-            state.maintenance = maintVal;
+            // Write a breakpoint at the viewing day: that day and every later day
+            // (until the next breakpoint) now use this value; earlier days are untouched.
+            state.maintenanceHistory[viewingDateString] = maintVal;
             saveState();
             updateUI();
+            // The "should-be" curve on the weight tab depends on per-day maintenance.
+            const weightTab = document.getElementById('tab-weight');
+            if (weightTab && weightTab.classList.contains('active')) renderWeightTab();
             maintModal.classList.remove('active');
         });
 
@@ -1439,26 +1487,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         navTabs.forEach((tab, i) => tab.addEventListener('click', () => switchToTab(i)));
-
-        // Horizontal swipe to change tabs. Ignored when the swipe starts inside
-        // the weight sheet — that is itself a horizontal scroller, so a swipe
-        // there should scroll the row, not flip tabs.
-        let touchStartX = 0;
-        let touchStartY = 0;
-        let touchInScroller = false;
-        document.addEventListener('touchstart', (e) => {
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            touchInScroller = !!(e.target.closest && e.target.closest('#weight-sheet'));
-        }, { passive: true });
-        document.addEventListener('touchend', (e) => {
-            if (touchInScroller) return;
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            const dy = e.changedTouches[0].clientY - touchStartY;
-            if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
-            const activeIdx = navTabs.findIndex((t) => t.classList.contains('active'));
-            switchToTab(activeIdx + (dx < 0 ? 1 : -1));
-        }, { passive: true });
+        // (Swipe-to-flip-tabs was removed: it competed with the horizontal scrollers
+        //  — the chart strip, weight sheet and amount wheel — for the same gesture.)
 
         // Settings modal
         document.getElementById('btn-settings').addEventListener('click', () => {
