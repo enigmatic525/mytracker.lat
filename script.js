@@ -603,13 +603,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pendingWheelScrollEl) return;
         const frag = document.createDocumentFragment();
         for (let v = 0; v <= PENDING_MAX; v += PENDING_STEP) {
-            const idx = v / PENDING_STEP;
             const item = document.createElement('div');
             item.className = 'hwheel-item';
             item.textContent = v;
-            item.addEventListener('click', () => {
-                pendingWheelScrollEl.scrollTo({ left: idx * PENDING_ITEM_W, behavior: 'smooth' });
-            });
+            // Jump instantly (no smooth animation) so rapid taps each register
+            // right away: tapping the far edge centers that value, which shifts the
+            // next-higher value under your finger — tap the edge 5× to reach +500.
+            item.addEventListener('click', () => setPendingAmount(v));
             frag.appendChild(item);
         }
         pendingWheelScrollEl.appendChild(frag);
