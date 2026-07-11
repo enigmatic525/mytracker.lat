@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         maintenanceHistory: {}, // { 'YYYY-MM-DD': value } — "effective from this date"
         history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
-        progressPhotos: {},   // { 'YYYY-MM-DD': [{id, ts, dataUrl, caption}] }
+        progressPhotos: {},   // { 'YYYY-MM-DD': [{id, ts, dataUrl}] }
         theme: 'dark',        // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
     };
@@ -129,14 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiFoodInputEl = document.getElementById('ai-food-input');
     const aiFoodSubmitEl = document.getElementById('ai-food-submit');
     const progressPhotoInputEl = document.getElementById('progress-photo-input');
-    const progressPhotoNoteEl = document.getElementById('progress-photo-note');
-    const progressStatusEl = document.getElementById('progress-photo-status');
     const progressEmptyEl = document.getElementById('progress-empty');
     const progressGalleryEl = document.getElementById('progress-gallery');
-    const progressTimelineEl = document.getElementById('progress-timeline');
     const progressHeadlineEl = document.getElementById('progress-headline');
-    const progressDayCountEl = document.getElementById('progress-day-count');
-    const progressTotalCountEl = document.getElementById('progress-total-count');
 
     const chartBarsEl = document.getElementById('chart-bars');
     const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
@@ -289,8 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return out;
     }
 
-    // Keep only 'YYYY-MM-DD' -> array of progress photos. Strip invalid entries
-    // and clamp every string field so a corrupt blob cannot persist garbage.
+    // Keep only 'YYYY-MM-DD' -> array of progress photos. Strip invalid
+    // entries so a corrupt blob cannot persist garbage.
     function sanitizeProgressPhotosMap(obj) {
         const out = {};
         if (obj && typeof obj === 'object') {
@@ -302,12 +297,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof e.id !== 'string' || !e.id.trim()) return;
                     if (typeof e.dataUrl !== 'string' || !e.dataUrl.startsWith('data:image/')) return;
                     const ts = Number.isFinite(e.ts) ? Math.max(0, Math.floor(e.ts)) : Date.now();
-                    const caption = typeof e.caption === 'string' ? e.caption.trim().slice(0, 80) : '';
                     entries.push({
                         id: e.id.trim(),
                         ts,
-                        dataUrl: e.dataUrl,
-                        caption
+                        dataUrl: e.dataUrl
                     });
                 });
                 if (entries.length) out[k] = entries.slice(-PROGRESS_MAX_PER_DAY);
@@ -718,13 +711,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function addProgressPhoto(dateStr, dataUrl, caption) {
+    function addProgressPhoto(dateStr, dataUrl) {
         const dayList = getProgressEntries(dateStr).slice();
         dayList.push({
             id: nextEntryId(),
             ts: Date.now(),
-            dataUrl,
-            caption: typeof caption === 'string' ? caption.trim().slice(0, 80) : ''
+            dataUrl
         });
         setProgressEntries(dateStr, dayList.slice(-PROGRESS_MAX_PER_DAY));
         pruneProgressPhotos();
@@ -737,52 +729,46 @@ document.addEventListener('DOMContentLoaded', () => {
         renderProgressTab();
     }
 
-    // Builds:
-    // - today's date-scoped gallery
-    // - a compact recent timeline of the last entries across dates
+    // Builds a horizontal strip that includes every stored photo (latest first).
     function renderProgressTab() {
-        if (!progressGalleryEl || !progressEmptyEl || !progressTimelineEl || !progressHeadlineEl || !progressDayCountEl || !progressTotalCountEl) return;
+        if (!progressGalleryEl || !progressEmptyEl || !progressHeadlineEl) return;
 
-        const dayEntries = getProgressEntries(viewingDateString)
-            .slice()
-            .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-        const dayCount = dayEntries.length;
-
-        let totalCount = 0;
-        const byDate = {};
-        Object.keys(state.progressPhotos).forEach((d) => {
-            const list = getProgressEntries(d);
-            if (list.length) {
-                byDate[d] = list;
-                totalCount += list.length;
-            }
+        const allEntries = [];
+        Object.keys(state.progressPhotos).forEach((dateStr) => {
+            const list = getProgressEntries(dateStr);
+            list.forEach((entry) => {
+                allEntries.push({
+                    dateStr,
+                    id: entry.id,
+                    ts: entry.ts || 0,
+                    dataUrl: entry.dataUrl
+                });
+            });
         });
+        allEntries.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
-        const d = new Date(viewingDateString + 'T12:00:00');
-        progressHeadlineEl.textContent = `Progress photos for ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`;
-        progressDayCountEl.textContent = `${dayCount} today`;
-        progressTotalCountEl.textContent = `${totalCount} total`;
+        progressHeadlineEl.textContent = 'Browse all progress photos';
 
         progressGalleryEl.innerHTML = '';
-        if (!dayEntries.length) {
+        if (!allEntries.length) {
             progressEmptyEl.style.display = 'block';
         } else {
             progressEmptyEl.style.display = 'none';
-            dayEntries.forEach((entry) => {
+            allEntries.forEach((entry) => {
                 const card = document.createElement('article');
                 card.className = 'progress-photo-item';
-                card.dataset.date = viewingDateString;
+                card.dataset.date = entry.dateStr;
 
                 const link = document.createElement('a');
                 link.href = entry.dataUrl;
                 link.target = '_blank';
                 link.rel = 'noreferrer';
-                link.setAttribute('aria-label', `Open progress photo ${d.toLocaleDateString()}`);
+                link.setAttribute('aria-label', `Open progress photo from ${entry.dateStr}`);
 
                 const img = document.createElement('img');
                 img.loading = 'lazy';
                 img.src = entry.dataUrl;
-                img.alt = entry.caption || 'Progress photo';
+                img.alt = 'Progress photo';
                 link.appendChild(img);
 
                 const meta = document.createElement('div');
@@ -790,13 +776,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const caption = document.createElement('span');
                 caption.className = 'progress-photo-caption';
-                caption.textContent = entry.caption || 'No note';
-                caption.title = entry.caption || '';
-
-                const time = document.createElement('span');
-                time.className = 'progress-photo-time';
                 const dt = new Date(entry.ts || Date.now());
-                time.textContent = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                caption.textContent = `${new Date(entry.dateStr + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+                caption.title = caption.textContent;
 
                 const del = document.createElement('button');
                 del.type = 'button';
@@ -807,89 +789,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 del.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    deleteProgressPhoto(viewingDateString, entry.id);
+                    deleteProgressPhoto(entry.dateStr, entry.id);
                 });
 
                 meta.appendChild(caption);
-                meta.appendChild(time);
                 card.appendChild(link);
                 card.appendChild(meta);
                 card.appendChild(del);
                 progressGalleryEl.appendChild(card);
             });
         }
-
-        const timeline = [];
-        Object.keys(byDate).forEach((dateStr) => {
-            const entries = byDate[dateStr].slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
-            const latest = entries[0];
-            if (latest) timeline.push({ dateStr, latest });
-        });
-        timeline.sort((a, b) => (new Date(b.dateStr) - new Date(a.dateStr)));
-        const latestEntries = timeline.slice(0, 12);
-        progressTimelineEl.innerHTML = '';
-        latestEntries.forEach((item) => {
-            const cell = document.createElement('button');
-            const ts = new Date(item.dateStr + 'T12:00:00');
-            cell.type = 'button';
-            cell.className = 'progress-timeline-tile';
-            if (item.dateStr === viewingDateString) cell.classList.add('active');
-            cell.dataset.date = item.dateStr;
-
-            const img = document.createElement('img');
-            img.loading = 'lazy';
-            img.src = item.latest.dataUrl;
-            img.alt = `Latest progress photo · ${ts.toLocaleDateString()}`;
-
-            const dateLbl = document.createElement('div');
-            dateLbl.className = 'progress-timeline-tile-date';
-            dateLbl.textContent = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
-
-            const countLbl = document.createElement('div');
-            countLbl.className = 'progress-timeline-tile-count';
-            countLbl.textContent = `${byDate[item.dateStr].length} photo${byDate[item.dateStr].length === 1 ? '' : 's'}`;
-
-            cell.appendChild(img);
-            cell.appendChild(dateLbl);
-            cell.appendChild(countLbl);
-            progressTimelineEl.appendChild(cell);
-        });
     }
 
     async function handleProgressPhotoSelection(fileList) {
         if (!progressPhotoInputEl || !progressPhotoInputEl.files) return;
-        if (!progressStatusEl) return;
 
         const files = Array.from(fileList).filter((f) => typeof f?.type === 'string' && f.type.startsWith('image/'));
-        if (!files.length) {
-            progressStatusEl.textContent = 'Pick an image to add.';
-            return;
-        }
-
-        const note = progressPhotoNoteEl ? progressPhotoNoteEl.value.trim() : '';
-        progressStatusEl.textContent = `Processing ${files.length} image${files.length === 1 ? '' : 's'}…`;
+        if (!files.length) return;
         progressPhotoInputEl.disabled = true;
 
-        let added = 0;
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const dataUrl = await compressImageToDataUrl(file);
-                addProgressPhoto(viewingDateString, dataUrl, note || '');
-                added += 1;
+                addProgressPhoto(viewingDateString, dataUrl);
             }
             saveState();
             renderProgressTab();
-            if (added) {
-                progressStatusEl.textContent = `Saved ${added} photo${added === 1 ? '' : 's'} for ${viewingDateString}`;
-            } else {
-                progressStatusEl.textContent = 'No images were added.';
-            }
-            if (progressPhotoNoteEl) progressPhotoNoteEl.value = '';
             progressPhotoInputEl.value = '';
         } catch (err) {
-            progressStatusEl.textContent = 'Could not process one or more images.';
-            progressPhotoInputEl.value = '';
+            console.error('Could not process one or more images.', err);
         } finally {
             progressPhotoInputEl.disabled = false;
         }
@@ -1663,40 +1592,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Natural-language calorie entry. The server owns the OpenAI credential,
         // classifies food vs. exercise, and returns a compact estimate.
+        let isAiSubmitting = false;
+        async function submitAiFoodEntry() {
+            if (isAiSubmitting) return;
+            const entry = aiFoodInputEl ? aiFoodInputEl.value.trim() : '';
+            if (!entry || !aiFoodSubmitEl) return;
+
+            isAiSubmitting = true;
+            aiFoodSubmitEl.disabled = true;
+            if (aiFoodInputEl) aiFoodInputEl.disabled = true;
+
+            try {
+                const response = await fetch('/api/food', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entry: entry })
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.error || 'Could not estimate calories');
+                if (!Number.isInteger(result.calories) || result.calories <= 0) {
+                    throw new Error('No calorie estimate returned');
+                }
+
+                const entryType = result.category === 'exercise' ? 'out' :
+                    result.category === 'food' ? 'in' : '';
+                if (!entryType) throw new Error('No entry category returned');
+
+                addEntry(entryType, result.calories, result.label || entry);
+                if (aiFoodInputEl) aiFoodInputEl.value = '';
+            } catch (error) {
+                console.error('Could not estimate calorie entry:', error);
+            } finally {
+                isAiSubmitting = false;
+                aiFoodSubmitEl.disabled = false;
+                if (aiFoodInputEl) {
+                    aiFoodInputEl.disabled = false;
+                }
+            }
+        }
+
         if (aiFoodFormEl) {
-            aiFoodFormEl.addEventListener('submit', async (e) => {
+            aiFoodFormEl.addEventListener('submit', (e) => {
                 e.preventDefault();
-                const entry = aiFoodInputEl ? aiFoodInputEl.value.trim() : '';
-                if (!entry || !aiFoodSubmitEl) return;
-
-                aiFoodSubmitEl.disabled = true;
-                if (aiFoodInputEl) aiFoodInputEl.disabled = true;
-                try {
-                    const response = await fetch('/api/food', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ entry: entry })
-                    });
-                    const result = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(result.error || 'Could not estimate calories');
-                    if (!Number.isInteger(result.calories) || result.calories <= 0) {
-                        throw new Error('No calorie estimate returned');
-                    }
-
-                    const entryType = result.category === 'exercise' ? 'out' :
-                        result.category === 'food' ? 'in' : '';
-                    if (!entryType) throw new Error('No entry category returned');
-
-                    addEntry(entryType, result.calories, result.label || entry);
-                    if (aiFoodInputEl) aiFoodInputEl.value = '';
-                } catch (error) {
-                    console.error('Could not estimate calorie entry:', error);
-                } finally {
-                    aiFoodSubmitEl.disabled = false;
-                    if (aiFoodInputEl) {
-                        aiFoodInputEl.disabled = false;
-                        aiFoodInputEl.focus();
-                    }
+                submitAiFoodEntry();
+            });
+        }
+        if (aiFoodSubmitEl) {
+            aiFoodSubmitEl.addEventListener('click', (e) => {
+                e.preventDefault();
+                submitAiFoodEntry();
+            });
+            aiFoodSubmitEl.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                submitAiFoodEntry();
+            });
+        }
+        if (aiFoodInputEl) {
+            aiFoodInputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitAiFoodEntry();
                 }
             });
         }
@@ -1705,19 +1660,6 @@ document.addEventListener('DOMContentLoaded', () => {
             progressPhotoInputEl.addEventListener('change', (e) => {
                 if (!e.target.files) return;
                 handleProgressPhotoSelection(e.target.files);
-            });
-        }
-        if (progressTimelineEl) {
-            progressTimelineEl.addEventListener('click', (e) => {
-                const tile = e.target.closest('.progress-timeline-tile');
-                if (!tile) return;
-                const dateStr = tile.dataset.date;
-                if (!dateStr) return;
-                jumpToDate(dateStr);
-                // Keep the current animation flow and make timeline navigation feel
-                // immediate after switching tabs.
-                const progressTab = document.getElementById('tab-progress');
-                if (progressTab && progressTab.classList.contains('active')) renderProgressTab();
             });
         }
 

@@ -483,13 +483,13 @@ body {
 }
 
 .log-box-in {
-    background: color-mix(in srgb, var(--success) 7%, transparent);
-    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+    background: color-mix(in srgb, var(--surface-color) 90%, var(--surface-hover) 10%);
+    border-color: var(--border-color);
 }
 
 .log-box-out {
-    background: color-mix(in srgb, var(--danger) 7%, transparent);
-    border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+    background: color-mix(in srgb, var(--surface-color) 90%, var(--surface-hover) 10%);
+    border-color: var(--border-color);
 }
 
 .log-list {
@@ -1061,18 +1061,6 @@ body {
     line-height: 1.35;
 }
 
-#tab-progress .progress-headline-stats {
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
-    white-space: nowrap;
-    color: var(--text-secondary);
-    font-size: 11px;
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    text-align: right;
-}
-
 #tab-progress .progress-composer {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
@@ -1116,25 +1104,6 @@ body {
     pointer-events: none;
 }
 
-#tab-progress #progress-photo-note {
-    width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 12px;
-    padding: 10px;
-    outline: 0;
-}
-
-#tab-progress .progress-status {
-    min-height: 14px;
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1.35;
-}
-
 #tab-progress .progress-empty {
     font-size: 12px;
     color: var(--text-secondary);
@@ -1145,16 +1114,29 @@ body {
 }
 
 #tab-progress .progress-gallery {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
     gap: 8px;
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    min-height: 120px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+#tab-progress .progress-gallery::-webkit-scrollbar {
+    height: 8px;
+}
+
+#tab-progress .progress-gallery::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-full);
 }
 
 #tab-progress .progress-photo-item {
     position: relative;
+    flex: 0 0 160px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 6px;
@@ -1187,12 +1169,7 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    width: 0;
     flex: 1;
-}
-
-#tab-progress .progress-photo-time {
-    white-space: nowrap;
 }
 
 #tab-progress .progress-photo-delete {
@@ -1215,63 +1192,6 @@ body {
 
 #tab-progress .progress-photo-delete:hover {
     color: var(--danger);
-}
-
-#tab-progress .progress-timeline {
-    margin-top: -2px;
-}
-
-#tab-progress .progress-subtitle {
-    color: var(--text-secondary);
-    font-size: 11px;
-    margin-bottom: 7px;
-}
-
-#tab-progress .progress-timeline-track {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-}
-
-#tab-progress .progress-timeline-track::-webkit-scrollbar {
-    display: none;
-}
-
-#tab-progress .progress-timeline-tile {
-    flex: 0 0 96px;
-    min-height: 120px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 4px;
-    background: var(--surface-color);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    cursor: pointer;
-    text-align: left;
-}
-
-#tab-progress .progress-timeline-tile.active {
-    border-color: var(--accent-primary);
-}
-
-#tab-progress .progress-timeline-tile img {
-    aspect-ratio: 4 / 3;
-    width: 100%;
-    object-fit: cover;
-    border-radius: 4px;
-}
-
-#tab-progress .progress-timeline-tile-date {
-    font-size: 10px;
-    color: var(--text-secondary);
-}
-
-#tab-progress .progress-timeline-tile-count {
-    font-size: 10px;
-    color: var(--text-primary);
 }
 
 #weight-chart-section {
