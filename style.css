@@ -1,46 +1,65 @@
-:root,
-.theme-light {
-    /* Light mode (default) */
-    --bg-color: #ffffff;
-    --surface-color: #ffffff;
-    --surface-hover: #f4f4f5;
-    --text-primary: #111111;
-    --text-secondary: #6b7280;
-    --accent-primary: #111111;
-    --accent-secondary: #374151;
-    --accent-contrast: #ffffff;   /* text/icon color on top of --accent-primary */
-    --danger: #dc2626;
-    --success: #059669;
-    --border-color: #e5e7eb;
-    --hairline: #ececec;
+:root {
+    /* The supplied iOS dashboard is the default, including during first paint. */
+    --bg-color: #191919;
+    --surface-color: #292929;
+    --surface-hover: #353535;
+    --text-primary: #fffeff;
+    --text-secondary: #acacac;
+    --accent-primary: #79b1fb;
+    --accent-secondary: #8bbcff;
+    --accent-contrast: #191919;
+    --danger: #ff9972;
+    --success: #6cc398;
+    --border-color: #424242;
+    --hairline: #353535;
 
-    --font-main: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --font-weight-light: 300;
-    --font-weight-regular: 300;
-    --font-weight-medium: 400;
-    --font-weight-bold: 500;
-    --radius-sm: 0px;
-    --radius-md: 0px;
-    --radius-lg: 0px;
+    /* The reference is set in Apple's San Francisco family. `-apple-system`
+       resolves to SF Pro on Apple devices and falls back to the native UI face. */
+    --font-main: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', sans-serif;
+    --font-weight-light: 400;
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-bold: 600;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
     --radius-full: 9999px;
 
     --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color-scheme: dark;
+}
+
+.theme-light {
+    --bg-color: #ffffff;
+    --surface-color: #ffffff;
+    --surface-hover: #f2f2f7;
+    --text-primary: #1c1c1e;
+    --text-secondary: #6e6e73;
+    --accent-primary: #4f8ff7;
+    --accent-secondary: #397be5;
+    --accent-contrast: #ffffff;
+    --danger: #d94f3d;
+    --success: #299e70;
+    --border-color: #d1d1d6;
+    --hairline: #e5e5ea;
+    color-scheme: light;
 }
 
 .theme-dark {
-    /* Dark mode — monochrome, mirrors the light palette */
-    --bg-color: #0b0b0d;
-    --surface-color: #141417;
-    --surface-hover: #1f1f23;
-    --text-primary: #e5e7eb;
-    --text-secondary: #8b8b93;
-    --accent-primary: #e5e7eb;
-    --accent-secondary: #a1a1aa;
-    --accent-contrast: #0b0b0d;
-    --danger: #f87171;
-    --success: #34d399;
-    --border-color: #2a2a2e;
-    --hairline: #2a2a2e;
+    /* iOS charcoal palette sampled from the supplied dashboard reference. */
+    --bg-color: #191919;
+    --surface-color: #292929;
+    --surface-hover: #353535;
+    --text-primary: #fffeff;
+    --text-secondary: #acacac;
+    --accent-primary: #79b1fb;
+    --accent-secondary: #8bbcff;
+    --accent-contrast: #191919;
+    --danger: #ff9972;
+    --success: #6cc398;
+    --border-color: #424242;
+    --hairline: #353535;
+    color-scheme: dark;
 }
 
 
@@ -48,6 +67,18 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 body {
@@ -61,6 +92,7 @@ body {
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    letter-spacing: -0.01em;
 }
 
 .app-container {
@@ -292,7 +324,7 @@ body {
     height: 100%;
     width: 0%;
     background: var(--accent-primary);
-    border-radius: 0;
+    border-radius: inherit;
     transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -377,6 +409,56 @@ body {
     align-items: center;
 }
 
+/* AI calorie entry — intentionally reads as a quiet text rule between the amount
+   wheel and the daily log, not as another card. */
+.ai-food-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+}
+
+.ai-food-bar input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 38px 8px 2px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: var(--font-weight-regular);
+}
+
+.ai-food-bar input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.72;
+}
+
+.ai-food-bar button {
+    position: absolute;
+    right: 0;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: color 0.15s, opacity 0.15s;
+}
+
+.ai-food-bar:focus-within {
+    border-color: var(--text-secondary);
+}
+
+.ai-food-bar:focus-within button { color: var(--text-primary); }
+.ai-food-bar button:disabled { cursor: wait; opacity: 0.35; }
+
 /* Running log — split into a green (In) and red (Out) box that line up under
    their meters. Each entry is removable via its corner ×. */
 .log-boxes {
@@ -440,7 +522,26 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+.log-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.log-label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .log-item .log-amount {
+    flex: 0 0 auto;
     font-size: 15px;
     font-weight: var(--font-weight-medium);
 }
@@ -710,7 +811,7 @@ body {
     font-family: var(--font-main);
     font-size: 12px;
     font-weight: var(--font-weight-regular);
-    letter-spacing: 0.04em;
+    letter-spacing: -0.01em;
     padding: 10px 20px;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -894,9 +995,283 @@ body {
     min-height: 0;
 }
 
+/* The calorie home view is vertically compressed to 80% of its former fixed
+   control heights and spacing. The daily log keeps the reclaimed room. */
+#tab-calories {
+    gap: 13px;
+}
+
+#tab-calories .chart-section {
+    height: 128px;
+    padding: 19px 13px 10px;
+}
+
+#tab-calories .progress-section {
+    margin-bottom: 18px !important;
+}
+
+#tab-calories .metrics-row {
+    padding: 6px 0 !important;
+}
+
+#tab-calories .meter-box {
+    padding: 8px 10px 9px;
+}
+
+#tab-calories .hwheel {
+    height: 32px;
+    margin: 1px 0;
+}
+
+#tab-calories .meter-val { font-size: 20px; }
+#tab-calories .meter-add-hint { height: 8px; font-size: 10px; }
+
 #tab-weight.active {
     flex-direction: column;
     gap: 16px;
+}
+
+#tab-progress.active {
+    flex-direction: column;
+    gap: 12px;
+}
+
+#tab-progress .progress-headline {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    background: var(--surface-color);
+}
+
+#tab-progress .progress-headline-title {
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.2;
+    color: var(--text-primary);
+}
+
+#tab-progress .progress-headline-subtitle {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+#tab-progress .progress-headline-stats {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 11px;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    text-align: right;
+}
+
+#tab-progress .progress-composer {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: color-mix(in srgb, var(--surface-color) 85%, transparent);
+}
+
+#tab-progress .progress-composer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#tab-progress .progress-upload-btn {
+    background: var(--surface-hover);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+}
+
+#tab-progress .progress-upload-btn svg {
+    opacity: 0.8;
+}
+
+#tab-progress input#progress-photo-input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+
+#tab-progress #progress-photo-note {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    padding: 10px;
+    outline: 0;
+}
+
+#tab-progress .progress-status {
+    min-height: 14px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+#tab-progress .progress-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 12px;
+}
+
+#tab-progress .progress-gallery {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+#tab-progress .progress-photo-item {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 6px;
+    background: var(--surface-color);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#tab-progress .progress-photo-item img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+#tab-progress .progress-photo-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+#tab-progress .progress-photo-caption {
+    color: var(--text-primary);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 0;
+    flex: 1;
+}
+
+#tab-progress .progress-photo-time {
+    white-space: nowrap;
+}
+
+#tab-progress .progress-photo-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--surface-color);
+    color: var(--text-secondary);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    z-index: 2;
+}
+
+#tab-progress .progress-photo-delete:hover {
+    color: var(--danger);
+}
+
+#tab-progress .progress-timeline {
+    margin-top: -2px;
+}
+
+#tab-progress .progress-subtitle {
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-bottom: 7px;
+}
+
+#tab-progress .progress-timeline-track {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+}
+
+#tab-progress .progress-timeline-track::-webkit-scrollbar {
+    display: none;
+}
+
+#tab-progress .progress-timeline-tile {
+    flex: 0 0 96px;
+    min-height: 120px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    background: var(--surface-color);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    text-align: left;
+}
+
+#tab-progress .progress-timeline-tile.active {
+    border-color: var(--accent-primary);
+}
+
+#tab-progress .progress-timeline-tile img {
+    aspect-ratio: 4 / 3;
+    width: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+#tab-progress .progress-timeline-tile-date {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+#tab-progress .progress-timeline-tile-count {
+    font-size: 10px;
+    color: var(--text-primary);
 }
 
 #weight-chart-section {
@@ -998,7 +1373,7 @@ body {
     display: flex;
     background: var(--surface-hover);
     padding: 2px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     border: 1px solid var(--border-color);
 }
 
@@ -1009,7 +1384,7 @@ body {
     padding: 4px 10px;
     font-size: 11px;
     font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-full);
     cursor: pointer;
     transition: var(--transition);
 }

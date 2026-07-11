@@ -1,0 +1,9 @@
+{
+  "name": "mytracker-lat",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
+

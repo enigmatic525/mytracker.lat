@@ -4,23 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Content Security Policy: only same-origin scripts, Google Fonts for styles/fonts,
-         same-origin images. No inline scripts, no external connections, no framing. -->
+    <!-- Content Security Policy: only same-origin scripts and images. No inline
+         scripts, external connections, or framing. -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
     <meta name="referrer" content="no-referrer">
     <title>My Tracker</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0d0f12">
+    <meta name="theme-color" content="#191919">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="icon" type="image/png" href="myicon.png">
     <link rel="apple-touch-icon" href="myicon.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap"
-        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -138,6 +134,19 @@
                     </div>
                 </section>
 
+                <!-- Natural-language calorie entry. The server classifies food vs.
+                     exercise and returns an estimate; the API key stays server-side. -->
+                <form class="ai-food-bar" id="ai-food-form">
+                    <label class="sr-only" for="ai-food-input">Describe food or exercise to estimate calories</label>
+                    <input id="ai-food-input" name="entry" type="text" maxlength="200"
+                        placeholder="Describe food or exercise" autocomplete="off" enterkeyhint="send">
+                    <button type="submit" id="ai-food-submit" aria-label="Estimate and add calorie entry">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3v18M5 10l7-7 7 7"/>
+                        </svg>
+                    </button>
+                </form>
+
                 <!-- The day's entries, split into a green (In) and red (Out) box that
                      line up under their meters. Each entry has an × to remove it. -->
                 <section class="log-boxes">
@@ -232,6 +241,46 @@
                     </section>
                 </div>
             </div>
+
+            <!-- PROGRESS TAB -->
+            <div id="tab-progress" class="tab-pane">
+                <section class="progress-headline">
+                    <div>
+                        <div class="progress-headline-title">Progress photos</div>
+                        <div class="progress-headline-subtitle" id="progress-headline">
+                            Capture progress by day with a lightweight timeline.
+                        </div>
+                    </div>
+                    <div class="progress-headline-stats">
+                        <span id="progress-day-count">0 today</span>
+                        <span>·</span>
+                        <span id="progress-total-count">0 total</span>
+                    </div>
+                </section>
+
+                <section class="progress-composer">
+                    <div class="progress-composer-row">
+                        <label class="progress-upload-btn" for="progress-photo-input">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 5v14M5 12h14"></path>
+                                <rect x="4" y="4" width="16" height="16" rx="3" />
+                            </svg>
+                            Add photo
+                        </label>
+                        <input id="progress-photo-input" type="file" accept="image/*" multiple />
+                    </div>
+                    <input id="progress-photo-note" type="text" maxlength="80" placeholder="Optional note (pose, lighting, angle)" />
+                    <div class="progress-status" id="progress-photo-status"></div>
+                </section>
+
+                <section class="progress-empty" id="progress-empty">No photos logged for this day.</section>
+                <div id="progress-gallery" class="progress-gallery"></div>
+
+                <section class="progress-timeline" id="progress-timeline-section">
+                    <div class="progress-subtitle">Recent timeline</div>
+                    <div id="progress-timeline" class="progress-timeline-track"></div>
+                </section>
+            </div>
         </div>
     </div>
 
@@ -239,6 +288,7 @@
     <nav class="bottom-nav">
         <button class="nav-tab active" data-target="tab-calories">Calories</button>
         <button class="nav-tab" data-target="tab-weight">Weight</button>
+        <button class="nav-tab" data-target="tab-progress">Progress</button>
     </nav>
 
     <!-- Weight dot popup -->

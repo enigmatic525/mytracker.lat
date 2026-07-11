@@ -3,7 +3,7 @@
 // Surface uncaught JS errors on the page so failures are visible without DevTools.
 window.addEventListener('error', (e) => {
     const box = document.createElement('pre');
-    box.style.cssText = 'position:fixed;inset:0;z-index:99999;margin:0;background:#fff;color:#dc2626;font:12px/1.5 ui-monospace,monospace;padding:24px;white-space:pre-wrap;overflow:auto';
+    box.style.cssText = 'position:fixed;inset:0;z-index:99999;margin:0;background:#191919;color:#ff9972;font:12px/1.5 ui-monospace,monospace;padding:24px;white-space:pre-wrap;overflow:auto';
     box.textContent = 'JS ERROR\n\n' + ((e.error && e.error.stack) || e.message) + '\n\nat ' + e.filename + ':' + e.lineno + ':' + e.colno;
     (document.body || document.documentElement).appendChild(box);
 });
@@ -27,6 +27,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const GOAL_BALANCE_LIMIT = 1500; // clamp for the goal stepper, ± this
     const MIN_WEIGHT = 1;          // sanity bounds for input validation
     const MAX_WEIGHT = 1500;
+    const PROGRESS_MAX_PER_DAY = 6;
+    const PROGRESS_MAX_TOTAL = 60;
+    const PROGRESS_MAX_DIM = 1100;
+    const PROGRESS_JPEG_QUALITY = 0.82;
     // A day's total intake (and, separately, total activity) is capped here. Entries
     // that would push the running total past this are clamped to the remaining room.
     const DAILY_CAL_CAP = 10000;
@@ -57,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
         maintenanceHistory: {}, // { 'YYYY-MM-DD': value } — "effective from this date"
         history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
-        theme: 'light',       // 'light' | 'dark'
+        progressPhotos: {},   // { 'YYYY-MM-DD': [{id, ts, dataUrl, caption}] }
+        theme: 'dark',        // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
     };
 
@@ -120,6 +125,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const logListOutEl = document.getElementById('log-list-out');
     const logEmptyInEl = document.getElementById('log-empty-in');
     const logEmptyOutEl = document.getElementById('log-empty-out');
+    const aiFoodFormEl = document.getElementById('ai-food-form');
+    const aiFoodInputEl = document.getElementById('ai-food-input');
+    const aiFoodSubmitEl = document.getElementById('ai-food-submit');
+    const progressPhotoInputEl = document.getElementById('progress-photo-input');
+    const progressPhotoNoteEl = document.getElementById('progress-photo-note');
+    const progressStatusEl = document.getElementById('progress-photo-status');
+    const progressEmptyEl = document.getElementById('progress-empty');
+    const progressGalleryEl = document.getElementById('progress-gallery');
+    const progressTimelineEl = document.getElementById('progress-timeline');
+    const progressHeadlineEl = document.getElementById('progress-headline');
+    const progressDayCountEl = document.getElementById('progress-day-count');
+    const progressTotalCountEl = document.getElementById('progress-total-count');
 
     const chartBarsEl = document.getElementById('chart-bars');
     const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
@@ -192,9 +209,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     maintenanceHistory: sanitizeMaintenanceMap(p.maintenanceHistory),
                     history: sanitizeHistoryMap(p.history),
                     weightHistory: sanitizeNumberMap(p.weightHistory),
-                    theme: p.theme === 'dark' ? 'dark' : 'light',
+                    progressPhotos: sanitizeProgressPhotosMap(p.progressPhotos),
+                    theme: p.theme === 'light' ? 'light' : 'dark',
                     unit: p.unit === 'metric' ? 'metric' : 'imperial'
                 };
+                pruneProgressPhotos();
             } catch (e) {
                 // Corrupt storage — keep the safe defaults rather than crashing.
             }
@@ -270,6 +289,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return out;
     }
 
+    // Keep only 'YYYY-MM-DD' -> array of progress photos. Strip invalid entries
+    // and clamp every string field so a corrupt blob cannot persist garbage.
+    function sanitizeProgressPhotosMap(obj) {
+        const out = {};
+        if (obj && typeof obj === 'object') {
+            Object.keys(obj).forEach((k) => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !Array.isArray(obj[k])) return;
+                const entries = [];
+                obj[k].forEach((e) => {
+                    if (!e || typeof e !== 'object') return;
+                    if (typeof e.id !== 'string' || !e.id.trim()) return;
+                    if (typeof e.dataUrl !== 'string' || !e.dataUrl.startsWith('data:image/')) return;
+                    const ts = Number.isFinite(e.ts) ? Math.max(0, Math.floor(e.ts)) : Date.now();
+                    const caption = typeof e.caption === 'string' ? e.caption.trim().slice(0, 80) : '';
+                    entries.push({
+                        id: e.id.trim(),
+                        ts,
+                        dataUrl: e.dataUrl,
+                        caption
+                    });
+                });
+                if (entries.length) out[k] = entries.slice(-PROGRESS_MAX_PER_DAY);
+            });
+        }
+        return out;
+    }
+
     // A day's entry list (empty array if none), and its summed in/out totals.
     function getEntries(dateStr) {
         const v = state.history[dateStr];
@@ -306,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyThemeAndUnits() {
         document.body.className = `theme-${state.theme}`;
         const metaTheme = document.querySelector('meta[name="theme-color"]');
-        if (metaTheme) metaTheme.content = state.theme === 'dark' ? '#0b0b0d' : '#ffffff';
+        if (metaTheme) metaTheme.content = state.theme === 'dark' ? '#191919' : '#ffffff';
 
         document.querySelectorAll('.theme-mode-toggle').forEach((btn) => {
             const isActive = btn.getAttribute('data-mode') === state.theme;
@@ -368,6 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateMeterHints();
         renderLog();
         renderChart();
+        renderProgressTab();
     }
 
     // Formats a signed integer: 0 -> "0", 300 -> "+300", -500 -> "−500".
@@ -519,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Appends an entry of the given type ('in' or 'out') to the viewing day's log.
-    function addEntry(type, amount) {
+    function addEntry(type, amount, label) {
         if (amount <= 0) return;
         const t = type === 'out' ? 'out' : 'in';
         // Clamp to the room left under the day's per-type cap. If the day is already
@@ -531,7 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const entries = getEntries(viewingDateString).slice();
-        entries.push({ id: nextEntryId(), t: t, a: Math.min(room, amount) });
+        const entry = { id: nextEntryId(), t: t, a: Math.min(room, amount) };
+        if (typeof label === 'string' && label.trim()) entry.label = label.trim().slice(0, 80);
+        entries.push(entry);
         state.history[viewingDateString] = entries;
 
         // Pulse the meter that just changed for tactile feedback.
@@ -576,9 +625,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const item = document.createElement('div');
             item.className = `log-item log-${type}`;
 
+            const main = document.createElement('span');
+            main.className = 'log-main';
+
             const amt = document.createElement('span');
             amt.className = 'log-amount';
             amt.textContent = `${type === 'out' ? '−' : '+'}${e.a}`;
+            main.appendChild(amt);
+
+            if (e.label) {
+                const label = document.createElement('span');
+                label.className = 'log-label';
+                label.textContent = e.label;
+                label.title = e.label;
+                main.appendChild(label);
+            }
 
             const del = document.createElement('button');
             del.type = 'button';
@@ -587,10 +648,251 @@ document.addEventListener('DOMContentLoaded', () => {
             del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
             del.addEventListener('click', () => deleteEntry(e.id));
 
-            item.appendChild(amt);
+            item.appendChild(main);
             item.appendChild(del);
             listEl.appendChild(item);
         });
+    }
+
+    // ===== Progress photos =====
+    function getProgressEntries(dateStr) {
+        const v = state.progressPhotos[dateStr];
+        return Array.isArray(v) ? v : [];
+    }
+
+    function setProgressEntries(dateStr, entries) {
+        const cleaned = Array.isArray(entries) ? entries : [];
+        if (cleaned.length) {
+            state.progressPhotos[dateStr] = cleaned;
+        } else {
+            delete state.progressPhotos[dateStr];
+        }
+    }
+
+    // Keep only the most recent entries if the total local store grows too large.
+    function pruneProgressPhotos() {
+        const all = [];
+        Object.keys(state.progressPhotos).forEach((dateStr) => {
+            getProgressEntries(dateStr).forEach((entry) => {
+                all.push({ dateStr, id: entry.id, ts: entry.ts || 0 });
+            });
+        });
+        all.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        if (all.length <= PROGRESS_MAX_TOTAL) return;
+
+        const keep = new Set(all.slice(0, PROGRESS_MAX_TOTAL).map((p) => `${p.dateStr}:${p.id}`));
+        Object.keys(state.progressPhotos).forEach((dateStr) => {
+            const next = getProgressEntries(dateStr).filter((entry) => keep.has(`${dateStr}:${entry.id}`));
+            setProgressEntries(dateStr, next);
+        });
+    }
+
+    // Reads an image file, decodes it, and returns a compact JPEG data URL.
+    function compressImageToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const source = document.createElement('img');
+                source.onload = () => {
+                    const maxSide = Math.max(source.naturalWidth, source.naturalHeight);
+                    const ratio = maxSide > PROGRESS_MAX_DIM ? PROGRESS_MAX_DIM / maxSide : 1;
+                    const w = Math.max(1, Math.round(source.naturalWidth * ratio));
+                    const h = Math.max(1, Math.round(source.naturalHeight * ratio));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        reject(new Error('Could not initialize image canvas'));
+                        return;
+                    }
+                    ctx.drawImage(source, 0, 0, w, h);
+                    const out = canvas.toDataURL('image/jpeg', PROGRESS_JPEG_QUALITY);
+                    resolve(out);
+                };
+                source.onerror = () => reject(new Error('Could not decode image'));
+                source.src = reader.result;
+            };
+            reader.onerror = () => reject(new Error('Could not read image'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function addProgressPhoto(dateStr, dataUrl, caption) {
+        const dayList = getProgressEntries(dateStr).slice();
+        dayList.push({
+            id: nextEntryId(),
+            ts: Date.now(),
+            dataUrl,
+            caption: typeof caption === 'string' ? caption.trim().slice(0, 80) : ''
+        });
+        setProgressEntries(dateStr, dayList.slice(-PROGRESS_MAX_PER_DAY));
+        pruneProgressPhotos();
+    }
+
+    function deleteProgressPhoto(dateStr, id) {
+        const next = getProgressEntries(dateStr).filter((p) => p.id !== id);
+        setProgressEntries(dateStr, next);
+        saveState();
+        renderProgressTab();
+    }
+
+    // Builds:
+    // - today's date-scoped gallery
+    // - a compact recent timeline of the last entries across dates
+    function renderProgressTab() {
+        if (!progressGalleryEl || !progressEmptyEl || !progressTimelineEl || !progressHeadlineEl || !progressDayCountEl || !progressTotalCountEl) return;
+
+        const dayEntries = getProgressEntries(viewingDateString)
+            .slice()
+            .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        const dayCount = dayEntries.length;
+
+        let totalCount = 0;
+        const byDate = {};
+        Object.keys(state.progressPhotos).forEach((d) => {
+            const list = getProgressEntries(d);
+            if (list.length) {
+                byDate[d] = list;
+                totalCount += list.length;
+            }
+        });
+
+        const d = new Date(viewingDateString + 'T12:00:00');
+        progressHeadlineEl.textContent = `Progress photos for ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.`;
+        progressDayCountEl.textContent = `${dayCount} today`;
+        progressTotalCountEl.textContent = `${totalCount} total`;
+
+        progressGalleryEl.innerHTML = '';
+        if (!dayEntries.length) {
+            progressEmptyEl.style.display = 'block';
+        } else {
+            progressEmptyEl.style.display = 'none';
+            dayEntries.forEach((entry) => {
+                const card = document.createElement('article');
+                card.className = 'progress-photo-item';
+                card.dataset.date = viewingDateString;
+
+                const link = document.createElement('a');
+                link.href = entry.dataUrl;
+                link.target = '_blank';
+                link.rel = 'noreferrer';
+                link.setAttribute('aria-label', `Open progress photo ${d.toLocaleDateString()}`);
+
+                const img = document.createElement('img');
+                img.loading = 'lazy';
+                img.src = entry.dataUrl;
+                img.alt = entry.caption || 'Progress photo';
+                link.appendChild(img);
+
+                const meta = document.createElement('div');
+                meta.className = 'progress-photo-meta';
+
+                const caption = document.createElement('span');
+                caption.className = 'progress-photo-caption';
+                caption.textContent = entry.caption || 'No note';
+                caption.title = entry.caption || '';
+
+                const time = document.createElement('span');
+                time.className = 'progress-photo-time';
+                const dt = new Date(entry.ts || Date.now());
+                time.textContent = dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'progress-photo-delete';
+                del.setAttribute('aria-label', 'Delete photo');
+                del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+                del.dataset.id = entry.id;
+                del.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteProgressPhoto(viewingDateString, entry.id);
+                });
+
+                meta.appendChild(caption);
+                meta.appendChild(time);
+                card.appendChild(link);
+                card.appendChild(meta);
+                card.appendChild(del);
+                progressGalleryEl.appendChild(card);
+            });
+        }
+
+        const timeline = [];
+        Object.keys(byDate).forEach((dateStr) => {
+            const entries = byDate[dateStr].slice().sort((a, b) => (b.ts || 0) - (a.ts || 0));
+            const latest = entries[0];
+            if (latest) timeline.push({ dateStr, latest });
+        });
+        timeline.sort((a, b) => (new Date(b.dateStr) - new Date(a.dateStr)));
+        const latestEntries = timeline.slice(0, 12);
+        progressTimelineEl.innerHTML = '';
+        latestEntries.forEach((item) => {
+            const cell = document.createElement('button');
+            const ts = new Date(item.dateStr + 'T12:00:00');
+            cell.type = 'button';
+            cell.className = 'progress-timeline-tile';
+            if (item.dateStr === viewingDateString) cell.classList.add('active');
+            cell.dataset.date = item.dateStr;
+
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            img.src = item.latest.dataUrl;
+            img.alt = `Latest progress photo · ${ts.toLocaleDateString()}`;
+
+            const dateLbl = document.createElement('div');
+            dateLbl.className = 'progress-timeline-tile-date';
+            dateLbl.textContent = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+            const countLbl = document.createElement('div');
+            countLbl.className = 'progress-timeline-tile-count';
+            countLbl.textContent = `${byDate[item.dateStr].length} photo${byDate[item.dateStr].length === 1 ? '' : 's'}`;
+
+            cell.appendChild(img);
+            cell.appendChild(dateLbl);
+            cell.appendChild(countLbl);
+            progressTimelineEl.appendChild(cell);
+        });
+    }
+
+    async function handleProgressPhotoSelection(fileList) {
+        if (!progressPhotoInputEl || !progressPhotoInputEl.files) return;
+        if (!progressStatusEl) return;
+
+        const files = Array.from(fileList).filter((f) => typeof f?.type === 'string' && f.type.startsWith('image/'));
+        if (!files.length) {
+            progressStatusEl.textContent = 'Pick an image to add.';
+            return;
+        }
+
+        const note = progressPhotoNoteEl ? progressPhotoNoteEl.value.trim() : '';
+        progressStatusEl.textContent = `Processing ${files.length} image${files.length === 1 ? '' : 's'}…`;
+        progressPhotoInputEl.disabled = true;
+
+        let added = 0;
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const dataUrl = await compressImageToDataUrl(file);
+                addProgressPhoto(viewingDateString, dataUrl, note || '');
+                added += 1;
+            }
+            saveState();
+            renderProgressTab();
+            if (added) {
+                progressStatusEl.textContent = `Saved ${added} photo${added === 1 ? '' : 's'} for ${viewingDateString}`;
+            } else {
+                progressStatusEl.textContent = 'No images were added.';
+            }
+            if (progressPhotoNoteEl) progressPhotoNoteEl.value = '';
+            progressPhotoInputEl.value = '';
+        } catch (err) {
+            progressStatusEl.textContent = 'Could not process one or more images.';
+            progressPhotoInputEl.value = '';
+        } finally {
+            progressPhotoInputEl.disabled = false;
+        }
     }
 
     // ===== Pending-amount wheel + meters =====
@@ -730,6 +1032,11 @@ document.addEventListener('DOMContentLoaded', () => {
             renderWeightTab();
             refreshWeightSheet();
             weightSheetScrollToDate(viewingDateString);
+            return;
+        }
+        const progressTab = document.getElementById('tab-progress');
+        if (progressTab && progressTab.classList.contains('active')) {
+            renderProgressTab();
         }
     }
 
@@ -1354,6 +1661,66 @@ document.addEventListener('DOMContentLoaded', () => {
         if (meterInEl) meterInEl.addEventListener('click', () => addEntry('in', pendingAmount));
         if (meterOutEl) meterOutEl.addEventListener('click', () => addEntry('out', pendingAmount));
 
+        // Natural-language calorie entry. The server owns the OpenAI credential,
+        // classifies food vs. exercise, and returns a compact estimate.
+        if (aiFoodFormEl) {
+            aiFoodFormEl.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const entry = aiFoodInputEl ? aiFoodInputEl.value.trim() : '';
+                if (!entry || !aiFoodSubmitEl) return;
+
+                aiFoodSubmitEl.disabled = true;
+                if (aiFoodInputEl) aiFoodInputEl.disabled = true;
+                try {
+                    const response = await fetch('/api/food', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entry: entry })
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(result.error || 'Could not estimate calories');
+                    if (!Number.isInteger(result.calories) || result.calories <= 0) {
+                        throw new Error('No calorie estimate returned');
+                    }
+
+                    const entryType = result.category === 'exercise' ? 'out' :
+                        result.category === 'food' ? 'in' : '';
+                    if (!entryType) throw new Error('No entry category returned');
+
+                    addEntry(entryType, result.calories, result.label || entry);
+                    if (aiFoodInputEl) aiFoodInputEl.value = '';
+                } catch (error) {
+                    console.error('Could not estimate calorie entry:', error);
+                } finally {
+                    aiFoodSubmitEl.disabled = false;
+                    if (aiFoodInputEl) {
+                        aiFoodInputEl.disabled = false;
+                        aiFoodInputEl.focus();
+                    }
+                }
+            });
+        }
+
+        if (progressPhotoInputEl) {
+            progressPhotoInputEl.addEventListener('change', (e) => {
+                if (!e.target.files) return;
+                handleProgressPhotoSelection(e.target.files);
+            });
+        }
+        if (progressTimelineEl) {
+            progressTimelineEl.addEventListener('click', (e) => {
+                const tile = e.target.closest('.progress-timeline-tile');
+                if (!tile) return;
+                const dateStr = tile.dataset.date;
+                if (!dateStr) return;
+                jumpToDate(dateStr);
+                // Keep the current animation flow and make timeline navigation feel
+                // immediate after switching tabs.
+                const progressTab = document.getElementById('tab-progress');
+                if (progressTab && progressTab.classList.contains('active')) renderProgressTab();
+            });
+        }
+
         // Goal modal (stepper). Goal is a signed daily balance (intake − expenditure):
         // negative = deficit, 0 = maintain, positive = surplus.
         const goalDisplay = document.getElementById('goal-display');
@@ -1483,6 +1850,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderWeightTab();
                 refreshWeightSheet();
                 weightSheetScrollToDate(viewingDateString);
+            } else if (navTabs[clamped].getAttribute('data-target') === 'tab-progress') {
+                renderProgressTab();
             }
         }
 
