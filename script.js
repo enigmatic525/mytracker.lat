@@ -1649,7 +1649,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (aiFoodInputEl) {
             aiFoodInputEl.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
+                const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13 || e.code === 'Enter';
+                if (isEnter) {
+                    e.preventDefault();
+                    submitAiFoodEntry();
+                }
+            });
+            aiFoodInputEl.addEventListener('keyup', (e) => {
+                const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13 || e.code === 'Enter';
+                if (isEnter) {
                     e.preventDefault();
                     submitAiFoodEntry();
                 }
