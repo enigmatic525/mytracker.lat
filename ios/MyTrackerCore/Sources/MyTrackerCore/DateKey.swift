@@ -22,4 +22,15 @@ public enum DateKey {
               let date = date(from: value) else { return false }
         return string(from: date) == value
     }
+
+    public static func mondayWeek(containing value: String) -> (start: String, end: String)? {
+        guard let date = date(from: value) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.firstWeekday = 2
+        let weekday = calendar.component(.weekday, from: date)
+        let daysSinceMonday = (weekday + 5) % 7
+        guard let startDate = calendar.date(byAdding: .day, value: -daysSinceMonday, to: date),
+              let endDate = calendar.date(byAdding: .day, value: 6, to: startDate) else { return nil }
+        return (string(from: startDate, calendar: calendar), string(from: endDate, calendar: calendar))
+    }
 }

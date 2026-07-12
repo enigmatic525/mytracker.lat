@@ -26,4 +26,18 @@ final class TrackerStateTests: XCTestCase {
         let data = try TrackerPersistence.encoder.encode(state)
         XCTAssertEqual(try TrackerPersistence.decoder.decode(TrackerState.self, from: data), state)
     }
+
+    func testLiftsAreGroupedIntoMondayThroughSundayWeeks() throws {
+        var state = TrackerState()
+        state.addLift(on: "2026-07-06", group: .chest, exercise: "Bench press", sets: 3, reps: 8, weight: 185)
+        state.addLift(on: "2026-07-12", group: .back, exercise: "Row", sets: 4, reps: 10, weight: 135)
+        state.addLift(on: "2026-07-13", group: .leg, exercise: "Squat", sets: 5, reps: 5, weight: 225)
+
+        let lifts = state.lifts(inWeekContaining: "2026-07-09")
+        XCTAssertEqual(lifts.count, 2)
+        XCTAssertEqual(lifts.reduce(0) { $0 + $1.lift.sets }, 7)
+
+        let data = try TrackerPersistence.encoder.encode(state)
+        XCTAssertEqual(try TrackerPersistence.decoder.decode(TrackerState.self, from: data), state)
+    }
 }

@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
         progressPhotos: {},   // { 'YYYY-MM-DD': [{id, ts, dataUrl}] }
+        liftHistory: {},      // { 'YYYY-MM-DD': [{id, group, exercise, sets, reps, weight}] }
         theme: 'dark',        // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
     };
@@ -90,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentWeightRange = 'month';
     let activeDotDateStr = null;
     let currentSvgPts = [];
+    let currentLiftGroup = 'chest';
 
     // Bounds of the day range currently built into the weight sheet. The sheet
     // grows past these as you scroll or jump to an out-of-range date.
@@ -136,6 +138,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressEmptyEl = document.getElementById('progress-empty');
     const progressGalleryEl = document.getElementById('progress-gallery');
     const progressHeadlineEl = document.getElementById('progress-headline');
+    const liftFormEl = document.getElementById('lift-form');
+    const liftExerciseEl = document.getElementById('lift-exercise');
+    const liftSetsEl = document.getElementById('lift-sets');
+    const liftRepsEl = document.getElementById('lift-reps');
+    const liftWeightEl = document.getElementById('lift-weight');
+    const liftWeightLabelEl = document.getElementById('lift-weight-label');
+    const liftWeekRangeEl = document.getElementById('lifts-week-range');
+    const liftWeekSummaryEl = document.getElementById('lift-week-summary');
+    const liftListEl = document.getElementById('lift-list');
+    const liftEmptyEl = document.getElementById('lift-empty');
 
     const chartBarsEl = document.getElementById('chart-bars');
     const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
@@ -209,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     history: sanitizeHistoryMap(p.history),
                     weightHistory: sanitizeNumberMap(p.weightHistory),
                     progressPhotos: sanitizeProgressPhotosMap(p.progressPhotos),
+                    liftHistory: sanitizeLiftHistoryMap(p.liftHistory),
                     theme: p.theme === 'light' ? 'light' : 'dark',
                     unit: p.unit === 'metric' ? 'metric' : 'imperial'
                 };
@@ -312,6 +325,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
                 if (entries.length) out[k] = entries.slice(-PROGRESS_MAX_PER_DAY);
+            });
+        }
+        return out;
+    }
+
+    function sanitizeLiftHistoryMap(obj) {
+        const out = {};
+        const groups = new Set(['chest', 'back', 'leg']);
+        if (obj && typeof obj === 'object') {
+            Object.keys(obj).forEach((day) => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Array.isArray(obj[day])) return;
+                const lifts = [];
+                obj[day].forEach((value) => {
+                    if (!value || typeof value !== 'object' || !groups.has(value.group)) return;
+                    const exercise = typeof value.exercise === 'string' ? value.exercise.trim().slice(0, 80) : '';
+                    const sets = Math.round(Number(value.sets));
+                    const reps = Math.round(Number(value.reps));
+                    const weight = Math.round(Number(value.weight) * 2) / 2;
+                    if (!exercise || !Number.isFinite(sets) || sets < 1 || sets > 20) return;
+                    if (!Number.isFinite(reps) || reps < 1 || reps > 100) return;
+                    if (!Number.isFinite(weight) || weight < 0 || weight > 5000) return;
+                    lifts.push({ id: nextEntryId(), group: value.group, exercise, sets, reps, weight });
+                });
+                if (lifts.length) out[day] = lifts;
             });
         }
         return out;
@@ -1006,7 +1043,102 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressTab = document.getElementById('tab-progress');
         if (progressTab && progressTab.classList.contains('active')) {
             renderProgressTab();
+            return;
         }
+        const liftsTab = document.getElementById('tab-lifts');
+        if (liftsTab && liftsTab.classList.contains('active')) {
+            renderLiftsTab();
+        }
+    }
+
+    // ===== Weekly lifts tab =====
+    // Weeks run Monday through Sunday. The shared header date chooses both the week
+    // being shown and the day a new lift is logged against.
+    function liftWeekFor(dateStr) {
+        const date = new Date(dateStr + 'T12:00:00');
+        const daysSinceMonday = (date.getDay() + 6) % 7;
+        const start = new Date(date);
+        start.setDate(start.getDate() - daysSinceMonday);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        return { start: getDateString(start), end: getDateString(end), startDate: start, endDate: end };
+    }
+
+    function liftsForWeek(dateStr) {
+        const week = liftWeekFor(dateStr);
+        const result = [];
+        Object.keys(state.liftHistory).forEach((day) => {
+            if (day < week.start || day > week.end) return;
+            (state.liftHistory[day] || []).forEach((lift) => result.push({ day, lift }));
+        });
+        return result.sort((a, b) => b.day.localeCompare(a.day));
+    }
+
+    function renderLiftsTab() {
+        if (!liftListEl || !liftWeekRangeEl || !liftWeekSummaryEl || !liftEmptyEl) return;
+        const week = liftWeekFor(viewingDateString);
+        const lifts = liftsForWeek(viewingDateString);
+        const dateOptions = { month: 'short', day: 'numeric' };
+        liftWeekRangeEl.textContent = `${week.startDate.toLocaleDateString('en-US', dateOptions)} – ${week.endDate.toLocaleDateString('en-US', dateOptions)}`;
+        if (liftWeightLabelEl) liftWeightLabelEl.textContent = `Weight (${state.unit === 'metric' ? 'kg' : 'lb'})`;
+
+        const totals = { chest: 0, back: 0, leg: 0, sets: 0 };
+        lifts.forEach(({ lift }) => {
+            totals[lift.group] += 1;
+            totals.sets += lift.sets;
+        });
+        liftWeekSummaryEl.innerHTML = '';
+        [`${lifts.length} lift${lifts.length === 1 ? '' : 's'}`, `${totals.sets} sets`, `Chest ${totals.chest} · Back ${totals.back} · Leg ${totals.leg}`]
+            .forEach((text) => {
+                const span = document.createElement('span');
+                span.textContent = text;
+                liftWeekSummaryEl.appendChild(span);
+            });
+
+        liftListEl.innerHTML = '';
+        liftEmptyEl.style.display = lifts.length ? 'none' : 'block';
+        lifts.forEach(({ day, lift }) => {
+            const card = document.createElement('article');
+            card.className = `lift-card ${lift.group}`;
+
+            const group = document.createElement('div');
+            group.className = 'lift-card-group';
+            group.textContent = lift.group;
+
+            const main = document.createElement('div');
+            main.className = 'lift-card-main';
+            const title = document.createElement('div');
+            title.className = 'lift-card-title';
+            title.textContent = lift.exercise;
+            const detail = document.createElement('div');
+            detail.className = 'lift-card-detail';
+            const dayLabel = new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            const unit = state.unit === 'metric' ? 'kg' : 'lb';
+            const weight = Number.isInteger(lift.weight) ? lift.weight : lift.weight.toFixed(1);
+            detail.textContent = `${dayLabel} · ${lift.sets} × ${lift.reps} @ ${weight} ${unit}`;
+            main.appendChild(title);
+            main.appendChild(detail);
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'lift-card-delete';
+            remove.setAttribute('aria-label', `Delete ${lift.exercise}`);
+            remove.textContent = '×';
+            remove.addEventListener('click', () => deleteLift(day, lift.id));
+
+            card.appendChild(group);
+            card.appendChild(main);
+            card.appendChild(remove);
+            liftListEl.appendChild(card);
+        });
+    }
+
+    function deleteLift(day, id) {
+        const remaining = (state.liftHistory[day] || []).filter((lift) => lift.id !== id);
+        if (remaining.length) state.liftHistory[day] = remaining;
+        else delete state.liftHistory[day];
+        saveState();
+        renderLiftsTab();
     }
 
     // ===== Weight tab =====
@@ -1630,6 +1762,40 @@ document.addEventListener('DOMContentLoaded', () => {
         if (meterInEl) meterInEl.addEventListener('click', () => addEntry('in', pendingAmount));
         if (meterOutEl) meterOutEl.addEventListener('click', () => addEntry('out', pendingAmount));
 
+        // Weekly strength log: the shared selected date determines the workout day.
+        document.querySelectorAll('.lift-group-option').forEach((button) => {
+            button.addEventListener('click', () => {
+                currentLiftGroup = button.getAttribute('data-lift-group') || 'chest';
+                document.querySelectorAll('.lift-group-option').forEach((option) => {
+                    option.classList.toggle('active', option === button);
+                });
+            });
+        });
+        if (liftFormEl) {
+            liftFormEl.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const exercise = liftExerciseEl ? liftExerciseEl.value.trim() : '';
+                const sets = Math.round(Number(liftSetsEl && liftSetsEl.value));
+                const reps = Math.round(Number(liftRepsEl && liftRepsEl.value));
+                const weight = Math.round(Number(liftWeightEl && liftWeightEl.value) * 2) / 2;
+                if (!exercise || !Number.isFinite(sets) || sets < 1 || sets > 20 ||
+                    !Number.isFinite(reps) || reps < 1 || reps > 100 ||
+                    !Number.isFinite(weight) || weight < 0 || weight > 5000) return;
+                state.liftHistory[viewingDateString] = state.liftHistory[viewingDateString] || [];
+                state.liftHistory[viewingDateString].push({
+                    id: nextEntryId(),
+                    group: currentLiftGroup,
+                    exercise: exercise.slice(0, 80),
+                    sets,
+                    reps,
+                    weight
+                });
+                saveState();
+                if (liftExerciseEl) liftExerciseEl.value = '';
+                renderLiftsTab();
+            });
+        }
+
         // Natural-language calorie entry. The server owns the OpenAI credential,
         // classifies food vs. exercise, and returns a compact estimate.
         let isAiSubmitting = false;
@@ -1853,6 +2019,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 weightSheetScrollToDate(viewingDateString);
             } else if (navTabs[clamped].getAttribute('data-target') === 'tab-progress') {
                 renderProgressTab();
+            } else if (navTabs[clamped].getAttribute('data-target') === 'tab-lifts') {
+                renderLiftsTab();
             }
         }
 
@@ -1894,6 +2062,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateUI();
                 const weightTab = document.getElementById('tab-weight');
                 if (weightTab && weightTab.classList.contains('active')) renderWeightTab();
+                const liftsTab = document.getElementById('tab-lifts');
+                if (liftsTab && liftsTab.classList.contains('active')) renderLiftsTab();
             });
         });
 

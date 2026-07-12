@@ -10,6 +10,7 @@
 		1BB307AC779666E56AB928B3 /* MyTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464FFC98EDB2F6B6135898E /* MyTrackerApp.swift */; };
 		1E7C1A0DD9B17CDAE93A7569 /* WeightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 988CEBD24A2443E1CA39CD08 /* WeightView.swift */; };
 		32F803460E6B63075BAAC94A /* MyTrackerCore in Frameworks */ = {isa = PBXBuildFile; productRef = E16F85A066288B11C36C9651 /* MyTrackerCore */; };
+		4A043DEDB230D037CCAD6186 /* LiftsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647047ECBA2EB1D0F6A09B19 /* LiftsView.swift */; };
 		50CFFCC09C4B907BBC6B35B2 /* MyTrackerCore in Frameworks */ = {isa = PBXBuildFile; productRef = 9F0AED43D90560AF576036FD /* MyTrackerCore */; };
 		5EB842AF27AD6A2C5C7B2A00 /* TrackerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1801DC6EC060AF22DA45ED56 /* TrackerStore.swift */; };
 		7E10D564FF10277C25652687 /* ProgressImageEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234F8C93AD0A558DDD7DFBBA /* ProgressImageEncoder.swift */; };
@@ -29,6 +30,7 @@
 		230D35AE6BB4E60D5991B4D2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		234F8C93AD0A558DDD7DFBBA /* ProgressImageEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressImageEncoder.swift; sourceTree = "<group>"; };
 		5B53E587979F0CF88AE60737 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		647047ECBA2EB1D0F6A09B19 /* LiftsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiftsView.swift; sourceTree = "<group>"; };
 		72E40A0218B1CD547B1EE1B7 /* MyTrackerTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MyTrackerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7464FFC98EDB2F6B6135898E /* MyTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyTrackerApp.swift; sourceTree = "<group>"; };
 		84E3865E7C820801C1DA0D8C /* TrackerBackupDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerBackupDocument.swift; sourceTree = "<group>"; };
@@ -104,6 +106,14 @@
 			path = Progress;
 			sourceTree = "<group>";
 		};
+		5677085EC1A153305627ACD4 /* Lifts */ = {
+			isa = PBXGroup;
+			children = (
+				647047ECBA2EB1D0F6A09B19 /* LiftsView.swift */,
+			);
+			path = Lifts;
+			sourceTree = "<group>";
+		};
 		6FD4FD73810E060EFC3F3943 /* Weight */ = {
 			isa = PBXGroup;
 			children = (
@@ -154,6 +164,7 @@
 			isa = PBXGroup;
 			children = (
 				926DD9387144DFFF98E3FAFE /* Calories */,
+				5677085EC1A153305627ACD4 /* Lifts */,
 				4B67347F13FD2CAEC1A80326 /* Progress */,
 				3359758C8091D92E795B1822 /* Settings */,
 				6FD4FD73810E060EFC3F3943 /* Weight */,
@@ -252,6 +263,7 @@
 				B05D28502921A8B2C3B670FA /* CaloriesView.swift in Sources */,
 				DA2DE98A59D0065A787BA6A2 /* ContentView.swift in Sources */,
 				B12203A4276E4F44120D2EA1 /* DayNavigator.swift in Sources */,
+				4A043DEDB230D037CCAD6186 /* LiftsView.swift in Sources */,
 				1BB307AC779666E56AB928B3 /* MyTrackerApp.swift in Sources */,
 				7E10D564FF10277C25652687 /* ProgressImageEncoder.swift in Sources */,
 				BCA1854C09CAA75C25BE0F01 /* ProgressPhotosView.swift in Sources */,

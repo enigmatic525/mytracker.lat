@@ -11,6 +11,9 @@ struct ContentView: View {
             WeightView()
                 .tabItem { Label("Weight", systemImage: "scalemass") }
 
+            LiftsView()
+                .tabItem { Label("Lifts", systemImage: "dumbbell") }
+
             ProgressPhotosView()
                 .tabItem { Label("Progress", systemImage: "photo.on.rectangle") }
 

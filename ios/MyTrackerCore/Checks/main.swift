@@ -46,6 +46,17 @@ func runChecks() throws {
 
     try check(DateKey.isValid("2026-07-12"), "Valid date key was rejected")
     try check(!DateKey.isValid("2026-02-31"), "Impossible date key was accepted")
+
+    var lifting = TrackerState()
+    lifting.addLift(on: "2026-07-06", group: .chest, exercise: "Bench press", sets: 3, reps: 8, weight: 185)
+    lifting.addLift(on: "2026-07-12", group: .back, exercise: "Row", sets: 4, reps: 10, weight: 135)
+    lifting.addLift(on: "2026-07-13", group: .leg, exercise: "Squat", sets: 5, reps: 5, weight: 225)
+    let weekLifts = lifting.lifts(inWeekContaining: "2026-07-09")
+    try check(weekLifts.count == 2, "Weekly lift range was not Monday through Sunday")
+    try check(weekLifts.reduce(0) { $0 + $1.lift.sets } == 7, "Weekly lift set total mismatch")
+    let liftingData = try TrackerPersistence.encoder.encode(lifting)
+    let restoredLifting = try TrackerPersistence.decoder.decode(TrackerState.self, from: liftingData)
+    try check(restoredLifting == lifting, "Lift history did not round-trip")
 }
 
 do {

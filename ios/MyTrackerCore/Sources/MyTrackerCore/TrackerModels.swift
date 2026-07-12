@@ -53,6 +53,47 @@ public struct ProgressPhoto: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public enum LiftMuscleGroup: String, Codable, CaseIterable, Sendable {
+    case chest
+    case back
+    case leg
+
+    public var displayName: String {
+        rawValue.capitalized
+    }
+}
+
+public struct LiftEntry: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var group: LiftMuscleGroup
+    public var exercise: String
+    public var sets: Int
+    public var reps: Int
+    public var weight: Double
+
+    public init(
+        id: String = UUID().uuidString,
+        group: LiftMuscleGroup,
+        exercise: String,
+        sets: Int,
+        reps: Int,
+        weight: Double
+    ) {
+        self.id = id
+        self.group = group
+        self.exercise = String(exercise.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        self.sets = min(max(sets, 1), 20)
+        self.reps = min(max(reps, 1), 100)
+        self.weight = min(max((weight * 2).rounded() / 2, 0), 5_000)
+    }
+}
+
+public struct DatedLift: Identifiable, Equatable, Sendable {
+    public let day: String
+    public let lift: LiftEntry
+    public var id: String { "\(day)-\(lift.id)" }
+}
+
 public enum TrackerTheme: String, Codable, CaseIterable, Sendable {
     case light
     case dark
@@ -97,6 +138,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
     public var history: [String: [CalorieEntry]]
     public var weightHistory: [String: Double]
     public var progressPhotos: [String: [ProgressPhoto]]
+    public var liftHistory: [String: [LiftEntry]]
     public var theme: TrackerTheme
     public var unit: UnitSystem
 
@@ -107,6 +149,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
         history: [String: [CalorieEntry]] = [:],
         weightHistory: [String: Double] = [:],
         progressPhotos: [String: [ProgressPhoto]] = [:],
+        liftHistory: [String: [LiftEntry]] = [:],
         theme: TrackerTheme = .dark,
         unit: UnitSystem = .imperial
     ) {
@@ -116,6 +159,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
         self.history = history
         self.weightHistory = weightHistory
         self.progressPhotos = progressPhotos
+        self.liftHistory = liftHistory
         self.theme = theme
         self.unit = unit
         sanitize()
@@ -192,6 +236,38 @@ public struct TrackerState: Codable, Equatable, Sendable {
         if progressPhotos[day]?.isEmpty == true { progressPhotos[day] = nil }
     }
 
+    public func lifts(inWeekContaining day: String) -> [DatedLift] {
+        guard let week = DateKey.mondayWeek(containing: day) else { return [] }
+        return liftHistory
+            .filter { $0.key >= week.start && $0.key <= week.end }
+            .flatMap { date, lifts in lifts.map { DatedLift(day: date, lift: $0) } }
+            .sorted {
+                if $0.day != $1.day { return $0.day > $1.day }
+                return $0.lift.exercise.localizedCaseInsensitiveCompare($1.lift.exercise) == .orderedAscending
+            }
+    }
+
+    @discardableResult
+    public mutating func addLift(
+        on day: String,
+        group: LiftMuscleGroup,
+        exercise: String,
+        sets: Int,
+        reps: Int,
+        weight: Double
+    ) -> LiftEntry? {
+        guard DateKey.isValid(day), !exercise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              weight.isFinite, weight >= 0 else { return nil }
+        let lift = LiftEntry(group: group, exercise: exercise, sets: sets, reps: reps, weight: weight)
+        liftHistory[day, default: []].append(lift)
+        return lift
+    }
+
+    public mutating func removeLift(id: String, on day: String) {
+        liftHistory[day]?.removeAll { $0.id == id }
+        if liftHistory[day]?.isEmpty == true { liftHistory[day] = nil }
+    }
+
     public mutating func sanitize() {
         goalBalance = min(max(goalBalance, -Self.goalBalanceLimit), Self.goalBalanceLimit)
         maintenance = min(max(maintenance, 500), 9_000)
@@ -212,6 +288,16 @@ public struct TrackerState: Codable, Equatable, Sendable {
             guard DateKey.isValid(item.key) else { return }
             let valid = item.value.filter { $0.dataURL.hasPrefix("data:image/") }
             if !valid.isEmpty { result[item.key] = Array(valid.suffix(6)) }
+        }
+        liftHistory = liftHistory.reduce(into: [:]) { result, item in
+            guard DateKey.isValid(item.key) else { return }
+            let valid = item.value.filter {
+                !$0.exercise.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                (1...20).contains($0.sets) &&
+                (1...100).contains($0.reps) &&
+                $0.weight.isFinite && $0.weight >= 0 && $0.weight <= 5_000
+            }
+            if !valid.isEmpty { result[item.key] = valid }
         }
         pruneProgressPhotos()
     }
@@ -236,6 +322,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
         case history
         case weightHistory
         case progressPhotos
+        case liftHistory
         case theme
         case unit
     }
@@ -254,6 +341,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
         history = try container.decodeIfPresent([String: [CalorieEntry]].self, forKey: .history) ?? [:]
         weightHistory = try container.decodeIfPresent([String: Double].self, forKey: .weightHistory) ?? [:]
         progressPhotos = try container.decodeIfPresent([String: [ProgressPhoto]].self, forKey: .progressPhotos) ?? [:]
+        liftHistory = try container.decodeIfPresent([String: [LiftEntry]].self, forKey: .liftHistory) ?? [:]
         theme = try container.decodeIfPresent(TrackerTheme.self, forKey: .theme) ?? .dark
         unit = try container.decodeIfPresent(UnitSystem.self, forKey: .unit) ?? .imperial
         sanitize()
@@ -267,6 +355,7 @@ public struct TrackerState: Codable, Equatable, Sendable {
         try container.encode(history, forKey: .history)
         try container.encode(weightHistory, forKey: .weightHistory)
         try container.encode(progressPhotos, forKey: .progressPhotos)
+        try container.encode(liftHistory, forKey: .liftHistory)
         try container.encode(theme, forKey: .theme)
         try container.encode(unit, forKey: .unit)
     }

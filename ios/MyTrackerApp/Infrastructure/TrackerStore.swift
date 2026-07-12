@@ -34,6 +34,7 @@ final class TrackerStore: ObservableObject {
     var selectedDay: String { DateKey.string(from: selectedDate) }
     var selectedSummary: DaySummary { state.summary(on: selectedDay) }
     var selectedEntries: [CalorieEntry] { state.entries(on: selectedDay) }
+    var selectedWeekLifts: [DatedLift] { state.lifts(inWeekContaining: selectedDay) }
 
     func moveDay(by amount: Int) {
         guard let date = Calendar.current.date(byAdding: .day, value: amount, to: selectedDate) else { return }
@@ -78,6 +79,29 @@ final class TrackerStore: ObservableObject {
 
     func removeProgressPhoto(day: String, photo: ProgressPhoto) {
         mutate { $0.removeProgressPhoto(id: photo.id, on: day) }
+    }
+
+    func addLift(
+        group: LiftMuscleGroup,
+        exercise: String,
+        sets: Int,
+        reps: Int,
+        weight: Double
+    ) {
+        mutate {
+            $0.addLift(
+                on: selectedDay,
+                group: group,
+                exercise: exercise,
+                sets: sets,
+                reps: reps,
+                weight: weight
+            )
+        }
+    }
+
+    func removeLift(_ datedLift: DatedLift) {
+        mutate { $0.removeLift(id: datedLift.lift.id, on: datedLift.day) }
     }
 
     func importBackup(from url: URL) {

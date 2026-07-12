@@ -9,6 +9,7 @@ This directory is the native SwiftUI conversion foundation for MyTracker. It is 
 - JSON persistence in Application Support
 - Production AI client using the existing server-side endpoint (the OpenAI key never enters the app)
 - Calories dashboard, seven-day balance chart, natural-language and manual entry
+- Weekly chest/back/leg lift log with faint red, blue, and green group coding
 - Weight entry, chart, and recent history
 - PhotosPicker progress gallery with resizing and local backup support
 - Theme, units, dated maintenance, and goal settings

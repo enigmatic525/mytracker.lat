@@ -1041,6 +1041,159 @@ body {
     gap: 16px;
 }
 
+#tab-lifts.active {
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.lifts-week-headline,
+.lift-composer,
+.lift-week-summary {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface-color);
+}
+
+.lifts-week-headline {
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.lifts-title {
+    font-size: 15px;
+    font-weight: var(--font-weight-medium);
+}
+
+.lifts-week-range {
+    margin-top: 3px;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.lifts-legend,
+.lift-group-picker {
+    display: flex;
+    gap: 6px;
+}
+
+.lift-legend-chip,
+.lift-group-option {
+    border-radius: var(--radius-full);
+    font-family: var(--font-main);
+    font-size: 10px;
+    line-height: 1;
+    padding: 6px 8px;
+}
+
+.lift-legend-chip.chest,
+.lift-group-option.chest.active,
+.lift-card.chest { background: rgba(255, 110, 110, 0.14); }
+
+.lift-legend-chip.back,
+.lift-group-option.back.active,
+.lift-card.back { background: rgba(105, 165, 255, 0.14); }
+
+.lift-legend-chip.leg,
+.lift-group-option.leg.active,
+.lift-card.leg { background: rgba(95, 205, 135, 0.14); }
+
+.lift-composer {
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.lift-group-picker {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.lift-group-option {
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    min-height: 32px;
+}
+
+.lift-group-option.active {
+    color: var(--text-primary);
+    border-color: currentColor;
+}
+
+.lift-composer > input,
+.lift-number-grid input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font: inherit;
+    padding: 9px 10px;
+    outline: none;
+}
+
+.lift-composer input:focus { border-color: var(--accent-primary); }
+
+.lift-number-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.lift-number-grid label {
+    display: grid;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.lift-week-summary {
+    padding: 9px 12px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.lift-list {
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.lift-card {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lift-card-main { min-width: 0; flex: 1; }
+.lift-card-title { font-size: 14px; font-weight: var(--font-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lift-card-detail { margin-top: 4px; color: var(--text-secondary); font-size: 11px; }
+.lift-card-group { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+.lift-card-delete { border: 0; background: transparent; color: var(--text-secondary); font-size: 18px; cursor: pointer; padding: 6px; }
+.lift-card-delete:hover { color: var(--danger); }
+
+.lift-empty {
+    display: none;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 #tab-progress.active {
     flex-direction: column;
     gap: 12px;
@@ -1271,7 +1424,7 @@ body {
     font-weight: var(--font-weight-medium);
     font-family: var(--font-main);
     cursor: pointer;
-    padding: 8px 20px;
+    padding: 8px 12px;
     transition: var(--transition);
     border-radius: 0;
     position: relative;
