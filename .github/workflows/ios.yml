@@ -43,3 +43,15 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Run XCTest suite
+        working-directory: ios
+        run: |
+          DEVICE_ID="$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')"
+          test -n "$DEVICE_ID" -a "$DEVICE_ID" != "null"
+          xcodebuild \
+            -project MyTracker.xcodeproj \
+            -scheme MyTracker \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            CODE_SIGNING_ALLOWED=NO \
+            test
