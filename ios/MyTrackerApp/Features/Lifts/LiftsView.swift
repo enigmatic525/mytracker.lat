@@ -40,7 +40,7 @@ struct LiftsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text("Tap a day to mark it")
+                            Text("Tap to cycle colors")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -59,18 +59,39 @@ struct LiftsView: View {
 
     private func attendanceButton(for date: Date) -> some View {
         let day = DateKey.string(from: date)
-        let completed = store.state.liftHistory[day]?.isEmpty == false
+        let group = store.state.liftHistory[day]?.first?.group
+        let completed = group != nil
+        let isToday = Calendar.current.isDateInToday(date)
         let label = date.formatted(.dateTime.weekday(.wide).month(.wide).day())
 
-        return Button { store.toggleLift(on: day) } label: {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(completed ? Color.green.opacity(0.62) : Color.secondary.opacity(0.18))
-                .aspectRatio(1, contentMode: .fit)
+        return Button { store.cycleLift(on: day) } label: {
+            ZStack {
+                if isToday {
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(
+                            Color.secondary,
+                            style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                        )
+                }
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(attendanceColor(for: group))
+                    .padding(isToday ? 3 : 0)
+            }
+            .aspectRatio(1, contentMode: .fit)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(label), \(completed ? "lift completed" : "no lift")")
-        .accessibilityValue(completed ? "Marked" : "Not marked")
+        .accessibilityLabel("\(label)\(isToday ? ", today" : "")")
+        .accessibilityValue(group?.displayName ?? "No lift")
         .accessibilityAddTraits(completed ? .isSelected : [])
+    }
+
+    private func attendanceColor(for group: LiftMuscleGroup?) -> Color {
+        switch group {
+        case .chest: .red.opacity(0.58)
+        case .back: .blue.opacity(0.62)
+        case .leg: .green.opacity(0.62)
+        case nil: .secondary.opacity(0.18)
+        }
     }
 
     private var attendanceDays: [Date] {

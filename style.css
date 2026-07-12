@@ -1081,7 +1081,10 @@ body {
     transition: background-color 120ms ease, transform 120ms ease;
 }
 
-.lift-attendance-day.completed { background: rgba(101, 190, 139, 0.82); }
+.lift-attendance-day.chest { background: rgba(255, 110, 110, 0.58); }
+.lift-attendance-day.back { background: rgba(105, 165, 255, 0.62); }
+.lift-attendance-day.leg { background: rgba(101, 190, 139, 0.72); }
+.lift-attendance-day.today { outline: 1px dashed var(--text-secondary); outline-offset: 2px; }
 .lift-attendance-day:active { transform: scale(0.88); }
 .lift-attendance-day:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 

@@ -80,14 +80,21 @@ final class TrackerStore: ObservableObject {
         mutate { $0.removeProgressPhoto(id: photo.id, on: day) }
     }
 
-    func toggleLift(on day: String) {
+    func cycleLift(on day: String) {
         mutate {
-            if $0.liftHistory[day]?.isEmpty == false {
-                $0.liftHistory[day] = nil
-            } else {
-                // Retain the shared web/native backup schema while recording only
-                // whether a workout happened on this date.
-                $0.addLift(on: day, group: .leg, exercise: "Workout", sets: 1, reps: 1, weight: 0)
+            let nextGroup: LiftMuscleGroup?
+            switch $0.liftHistory[day]?.first?.group {
+            case nil: nextGroup = .chest
+            case .chest: nextGroup = .back
+            case .back: nextGroup = .leg
+            case .leg: nextGroup = nil
+            }
+
+            $0.liftHistory[day] = nil
+            if let nextGroup {
+                // Retain the shared web/native backup schema while recording
+                // attendance and the selected workout color.
+                $0.addLift(on: day, group: nextGroup, exercise: "Workout", sets: 1, reps: 1, weight: 0)
             }
         }
     }

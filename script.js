@@ -1066,15 +1066,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const date = new Date(today);
             date.setDate(date.getDate() - offset);
             const day = getDateString(date);
-            const completed = Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length > 0;
+            const group = Array.isArray(state.liftHistory[day]) ? state.liftHistory[day][0]?.group : null;
+            const completed = group === 'chest' || group === 'back' || group === 'leg';
+            const status = completed ? group : 'no lift';
             const label = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
             const cell = document.createElement('button');
             cell.type = 'button';
-            cell.className = `lift-attendance-day${completed ? ' completed' : ''}`;
-            cell.title = `${label}: ${completed ? 'lift completed' : 'no lift'}`;
-            cell.setAttribute('aria-label', `${label}, ${completed ? 'lift completed' : 'no lift'}`);
+            cell.className = `lift-attendance-day${completed ? ` ${group}` : ''}${day === currentDateString ? ' today' : ''}`;
+            cell.title = `${label}: ${status}${day === currentDateString ? ' (today)' : ''}`;
+            cell.setAttribute('aria-label', `${label}${day === currentDateString ? ', today' : ''}, ${status}`);
             cell.setAttribute('aria-pressed', completed ? 'true' : 'false');
-            cell.addEventListener('click', () => toggleLiftDay(day));
+            cell.addEventListener('click', () => cycleLiftDay(day));
             liftAttendanceGridEl.appendChild(cell);
         }
 
@@ -1085,14 +1087,20 @@ document.addEventListener('DOMContentLoaded', () => {
         liftWeekCountEl.textContent = `${completedThisWeek}/7`;
     }
 
-    function toggleLiftDay(day) {
-        if (Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length) {
+    function cycleLiftDay(day) {
+        const currentGroup = Array.isArray(state.liftHistory[day]) ? state.liftHistory[day][0]?.group : null;
+        const nextGroup = currentGroup === 'chest' ? 'back'
+            : currentGroup === 'back' ? 'leg'
+                : currentGroup === 'leg' ? null : 'chest';
+
+        if (!nextGroup) {
             delete state.liftHistory[day];
         } else {
-            // Keep the established backup schema while the UI records only attendance.
+            // Keep the established backup schema while the UI records attendance
+            // and the selected workout color.
             state.liftHistory[day] = [{
                 id: nextEntryId(),
-                group: 'leg',
+                group: nextGroup,
                 exercise: 'Workout',
                 sets: 1,
                 reps: 1,
