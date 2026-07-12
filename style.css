@@ -459,6 +459,16 @@ body {
 .ai-food-bar:focus-within button { color: var(--text-primary); }
 .ai-food-bar button:disabled { cursor: wait; opacity: 0.35; }
 
+.ai-food-status {
+    margin: -6px 4px 14px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.ai-food-status.error { color: var(--danger); }
+.ai-food-status.success { color: var(--success); }
+
 /* Running log — split into a green (In) and red (Out) box that line up under
    their meters. Each entry is removable via its corner ×. */
 .log-boxes {

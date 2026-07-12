@@ -34,6 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // A day's total intake (and, separately, total activity) is capped here. Entries
     // that would push the running total past this are clamped to the remaining room.
     const DAILY_CAL_CAP = 10000;
+    const AI_API_URL = /^(?:www\.)?mytracker\.lat$/i.test(window.location.hostname)
+        ? 'https://mytracker-lat.vercel.app/api/food'
+        : '/api/food';
     // The pending-amount wheel: scroll left/right (in steps of 50) to set the
     // amount, then a meter tap logs it. Item width must match .hwheel-item (and the
     // side-padding/highlight) in the CSS, or the snap won't center cleanly.
@@ -128,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiFoodFormEl = document.getElementById('ai-food-form');
     const aiFoodInputEl = document.getElementById('ai-food-input');
     const aiFoodSubmitEl = document.getElementById('ai-food-submit');
+    const aiFoodStatusEl = document.getElementById('ai-food-status');
     const progressPhotoInputEl = document.getElementById('progress-photo-input');
     const progressEmptyEl = document.getElementById('progress-empty');
     const progressGalleryEl = document.getElementById('progress-gallery');
@@ -1593,6 +1597,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Natural-language calorie entry. The server owns the OpenAI credential,
         // classifies food vs. exercise, and returns a compact estimate.
         let isAiSubmitting = false;
+        function setAiFoodStatus(message, type) {
+            if (!aiFoodStatusEl) return;
+            aiFoodStatusEl.textContent = message;
+            aiFoodStatusEl.classList.toggle('error', type === 'error');
+            aiFoodStatusEl.classList.toggle('success', type === 'success');
+            aiFoodStatusEl.hidden = !message;
+        }
+
         async function submitAiFoodEntry() {
             if (isAiSubmitting) return;
             const entry = aiFoodInputEl ? aiFoodInputEl.value.trim() : '';
@@ -1601,9 +1613,10 @@ document.addEventListener('DOMContentLoaded', () => {
             isAiSubmitting = true;
             aiFoodSubmitEl.disabled = true;
             if (aiFoodInputEl) aiFoodInputEl.disabled = true;
+            setAiFoodStatus('Estimating calories…');
 
             try {
-                const response = await fetch('/api/food', {
+                const response = await fetch(AI_API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ entry: entry })
@@ -1620,8 +1633,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 addEntry(entryType, result.calories, result.label || entry);
                 if (aiFoodInputEl) aiFoodInputEl.value = '';
+                setAiFoodStatus(`Added ${result.label || entry}: ${result.calories} calories.`, 'success');
             } catch (error) {
                 console.error('Could not estimate calorie entry:', error);
+                setAiFoodStatus(error.message || 'Could not estimate that entry right now.', 'error');
             } finally {
                 isAiSubmitting = false;
                 aiFoodSubmitEl.disabled = false;

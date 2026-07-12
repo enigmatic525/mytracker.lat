@@ -23,6 +23,23 @@ const ENTRY_SCHEMA = {
     additionalProperties: false
 };
 
+const ALLOWED_BROWSER_ORIGINS = new Set([
+    'https://mytracker.lat',
+    'https://www.mytracker.lat'
+]);
+
+function allowBrowserOrigin(req, res) {
+    const origin = req.headers && req.headers.origin;
+    if (!origin) return true;
+    if (!ALLOWED_BROWSER_ORIGINS.has(origin)) return false;
+
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Vary', 'Origin');
+    return true;
+}
+
 // Node does not load `.env` automatically. Use its built-in loader when this
 // handler is run directly or by a Node host; deployed hosts can still inject the
 // same variable through their environment as usual. The file itself is gitignored.
@@ -51,10 +68,20 @@ if (!process.env.OPENAI_API_KEY) {
 
 module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
+    const browserOriginAllowed = allowBrowserOrigin(req, res);
+
+    if (req.method === 'OPTIONS') {
+        if (!browserOriginAllowed) return res.status(403).end();
+        return res.status(204).end();
+    }
 
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
         return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    if (!browserOriginAllowed) {
+        return res.status(403).json({ error: 'Origin not allowed' });
     }
 
     if (!process.env.OPENAI_API_KEY) {

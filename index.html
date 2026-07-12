@@ -4,10 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Content Security Policy: only same-origin scripts and images. No inline
-         scripts, external connections, or framing. -->
+    <!-- Content Security Policy: only same-origin scripts and images. Network
+         requests may also reach the trusted server-side AI endpoint. -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://mytracker-lat.vercel.app; manifest-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'">
     <meta name="referrer" content="no-referrer">
     <title>My Tracker</title>
     <link rel="manifest" href="manifest.json">
@@ -146,6 +146,7 @@
                         </svg>
                     </button>
                 </form>
+                <p class="ai-food-status" id="ai-food-status" role="status" aria-live="polite" hidden></p>
 
                 <!-- The day's entries, split into a green (In) and red (Out) box that
                      line up under their meters. Each entry has an × to remove it. -->
