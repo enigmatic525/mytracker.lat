@@ -10,12 +10,13 @@ struct ProgressPhotosView: View {
     private let columns = [GridItem(.adaptive(minimum: 145), spacing: 12)]
 
     var body: some View {
+        let pickerTitle = isLoading ? "Processing photo…" : "Add progress photo"
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
                     DayNavigator()
                     PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label(isLoading ? "Processing photo…" : "Add progress photo", systemImage: "camera.fill")
+                        Label(pickerTitle, systemImage: "camera.fill")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
