@@ -82,19 +82,31 @@ struct SettingsView: View {
     }
 
     private var themeBinding: Binding<TrackerTheme> {
-        Binding(get: { store.state.theme }, set: store.setTheme)
+        Binding(
+            get: { store.state.theme },
+            set: { value in store.setTheme(value) }
+        )
     }
 
     private var unitBinding: Binding<UnitSystem> {
-        Binding(get: { store.state.unit }, set: store.setUnit)
+        Binding(
+            get: { store.state.unit },
+            set: { value in store.setUnit(value) }
+        )
     }
 
     private var maintenanceBinding: Binding<Int> {
-        Binding(get: { store.state.maintenance(on: store.selectedDay) }, set: store.setMaintenance)
+        Binding(
+            get: { store.state.maintenance(on: store.selectedDay) },
+            set: { value in store.setMaintenance(value) }
+        )
     }
 
     private var goalBinding: Binding<Int> {
-        Binding(get: { store.state.goalBalance }, set: store.setGoalBalance)
+        Binding(
+            get: { store.state.goalBalance },
+            set: { value in store.setGoalBalance(value) }
+        )
     }
 
     private func signed(_ value: Int) -> String {
