@@ -1,0 +1,81 @@
+name: MyTracker
+
+options:
+  bundleIdPrefix: lat.mytracker
+  deploymentTarget:
+    iOS: "17.0"
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+packages:
+  MyTrackerCore:
+    path: MyTrackerCore
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  MyTracker:
+    type: application
+    platform: iOS
+    sources:
+      - path: MyTrackerApp
+        excludes:
+          - Resources
+    resources:
+      - path: MyTrackerApp/Resources
+    dependencies:
+      - package: MyTrackerCore
+        product: MyTrackerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: lat.mytracker.app
+        PRODUCT_NAME: MyTracker
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: false
+    info:
+      path: MyTrackerApp/Info.plist
+      properties:
+        CFBundleDisplayName: MyTracker
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIRequiresFullScreen: false
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSPhotoLibraryUsageDescription: MyTracker uses selected photos to build your private progress gallery.
+
+  MyTrackerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MyTrackerTests
+    dependencies:
+      - package: MyTrackerCore
+        product: MyTrackerCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: lat.mytracker.tests
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  MyTracker:
+    build:
+      targets:
+        MyTracker: all
+        MyTrackerTests: [test]
+    test:
+      targets:
+        - MyTrackerTests
+    run:
+      config: Debug
+    archive:
+      config: Release

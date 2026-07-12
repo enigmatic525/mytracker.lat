@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "check:ios-core": "swift run --package-path ios/MyTrackerCore MyTrackerCoreChecks",
+    "generate:ios": "cd ios && xcodegen generate"
   }
 }
-

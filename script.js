@@ -275,7 +275,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (Array.isArray(v)) {
                     v.forEach((e) => {
                         if (e && (e.t === 'in' || e.t === 'out') && pos(e.a)) {
-                            entries.push({ id: nextEntryId(), t: e.t, a: pos(e.a) });
+                            const entry = { id: nextEntryId(), t: e.t, a: pos(e.a) };
+                            if (typeof e.label === 'string' && e.label.trim()) {
+                                entry.label = e.label.trim().slice(0, 80);
+                            }
+                            entries.push(entry);
                         }
                     });
                 } else if (v && typeof v === 'object') {
@@ -343,6 +347,38 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (e) {}
+    }
+
+    async function exportTrackerBackup() {
+        const statusEl = document.getElementById('backup-export-status');
+        const filename = `mytracker-backup-${getTodayDateString()}.json`;
+        const payload = JSON.stringify({
+            formatVersion: 2,
+            exportedAt: new Date().toISOString(),
+            state
+        }, null, 2);
+        const blob = new Blob([payload], { type: 'application/json' });
+
+        try {
+            const file = typeof File === 'function' ? new File([blob], filename, { type: blob.type }) : null;
+            if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ title: 'MyTracker backup', files: [file] });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+            if (statusEl) statusEl.textContent = 'Backup ready. Keep this file private; it contains your tracker history and photos.';
+        } catch (error) {
+            if (error && error.name === 'AbortError') return;
+            console.error('Could not export tracker backup:', error);
+            if (statusEl) statusEl.textContent = 'Could not export the backup. Please try again.';
+        }
     }
 
     // ===== Theme & units =====
@@ -1832,6 +1868,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('close-modal-settings').addEventListener('click', () => {
             document.getElementById('modal-settings').classList.remove('active');
         });
+        const exportBackupBtn = document.getElementById('btn-export-backup');
+        if (exportBackupBtn) exportBackupBtn.addEventListener('click', exportTrackerBackup);
         document.querySelectorAll('.modal-overlay').forEach((modal) => {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) modal.classList.remove('active');

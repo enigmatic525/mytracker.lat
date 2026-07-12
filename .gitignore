@@ -3,3 +3,7 @@
 !.env.example
 
 .vercel
+ios/MyTrackerCore/.build/
+ios/DerivedData/
+ios/MyTracker.xcodeproj/xcuserdata/
+*.xcuserstate
