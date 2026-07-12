@@ -34,7 +34,6 @@ final class TrackerStore: ObservableObject {
     var selectedDay: String { DateKey.string(from: selectedDate) }
     var selectedSummary: DaySummary { state.summary(on: selectedDay) }
     var selectedEntries: [CalorieEntry] { state.entries(on: selectedDay) }
-    var selectedWeekLifts: [DatedLift] { state.lifts(inWeekContaining: selectedDay) }
 
     func moveDay(by amount: Int) {
         guard let date = Calendar.current.date(byAdding: .day, value: amount, to: selectedDate) else { return }
@@ -81,27 +80,16 @@ final class TrackerStore: ObservableObject {
         mutate { $0.removeProgressPhoto(id: photo.id, on: day) }
     }
 
-    func addLift(
-        group: LiftMuscleGroup,
-        exercise: String,
-        sets: Int,
-        reps: Int,
-        weight: Double
-    ) {
+    func toggleLift(on day: String) {
         mutate {
-            $0.addLift(
-                on: selectedDay,
-                group: group,
-                exercise: exercise,
-                sets: sets,
-                reps: reps,
-                weight: weight
-            )
+            if $0.liftHistory[day]?.isEmpty == false {
+                $0.liftHistory[day] = nil
+            } else {
+                // Retain the shared web/native backup schema while recording only
+                // whether a workout happened on this date.
+                $0.addLift(on: day, group: .leg, exercise: "Workout", sets: 1, reps: 1, weight: 0)
+            }
         }
-    }
-
-    func removeLift(_ datedLift: DatedLift) {
-        mutate { $0.removeLift(id: datedLift.lift.id, on: datedLift.day) }
     }
 
     func importBackup(from url: URL) {

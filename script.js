@@ -65,7 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
         history: {},          // { 'YYYY-MM-DD': [ { id, t:'in'|'out', a } ] }
         weightHistory: {},    // { 'YYYY-MM-DD': weight }
         progressPhotos: {},   // { 'YYYY-MM-DD': [{id, ts, dataUrl}] }
-        liftHistory: {},      // { 'YYYY-MM-DD': [{id, group, exercise, sets, reps, weight}] }
+        // A date is considered a lifting day when its array contains at least one
+        // entry. Older detailed entries remain valid and appear as filled days.
+        liftHistory: {},
         theme: 'dark',        // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
     };
@@ -91,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentWeightRange = 'month';
     let activeDotDateStr = null;
     let currentSvgPts = [];
-    let currentLiftGroup = 'chest';
 
     // Bounds of the day range currently built into the weight sheet. The sheet
     // grows past these as you scroll or jump to an out-of-range date.
@@ -138,16 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressEmptyEl = document.getElementById('progress-empty');
     const progressGalleryEl = document.getElementById('progress-gallery');
     const progressHeadlineEl = document.getElementById('progress-headline');
-    const liftFormEl = document.getElementById('lift-form');
-    const liftExerciseEl = document.getElementById('lift-exercise');
-    const liftSetsEl = document.getElementById('lift-sets');
-    const liftRepsEl = document.getElementById('lift-reps');
-    const liftWeightEl = document.getElementById('lift-weight');
-    const liftWeightLabelEl = document.getElementById('lift-weight-label');
-    const liftWeekRangeEl = document.getElementById('lifts-week-range');
-    const liftWeekSummaryEl = document.getElementById('lift-week-summary');
-    const liftListEl = document.getElementById('lift-list');
-    const liftEmptyEl = document.getElementById('lift-empty');
+    const liftAttendanceGridEl = document.getElementById('lift-attendance-grid');
+    const liftWeekCountEl = document.getElementById('lift-week-count');
 
     const chartBarsEl = document.getElementById('chart-bars');
     const weeklyDiffLabelEl = document.getElementById('weekly-difference-label');
@@ -1051,9 +1044,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ===== Weekly lifts tab =====
-    // Weeks run Monday through Sunday. The shared header date chooses both the week
-    // being shown and the day a new lift is logged against.
+    // ===== Lift attendance tab =====
+    // Weeks run Monday through Sunday. Detailed legacy lift entries are intentionally
+    // treated as attendance so upgrading does not erase previously recorded days.
     function liftWeekFor(dateStr) {
         const date = new Date(dateStr + 'T12:00:00');
         const daysSinceMonday = (date.getDay() + 6) % 7;
@@ -1064,79 +1057,48 @@ document.addEventListener('DOMContentLoaded', () => {
         return { start: getDateString(start), end: getDateString(end), startDate: start, endDate: end };
     }
 
-    function liftsForWeek(dateStr) {
-        const week = liftWeekFor(dateStr);
-        const result = [];
-        Object.keys(state.liftHistory).forEach((day) => {
-            if (day < week.start || day > week.end) return;
-            (state.liftHistory[day] || []).forEach((lift) => result.push({ day, lift }));
-        });
-        return result.sort((a, b) => b.day.localeCompare(a.day));
-    }
-
     function renderLiftsTab() {
-        if (!liftListEl || !liftWeekRangeEl || !liftWeekSummaryEl || !liftEmptyEl) return;
-        const week = liftWeekFor(viewingDateString);
-        const lifts = liftsForWeek(viewingDateString);
-        const dateOptions = { month: 'short', day: 'numeric' };
-        liftWeekRangeEl.textContent = `${week.startDate.toLocaleDateString('en-US', dateOptions)} – ${week.endDate.toLocaleDateString('en-US', dateOptions)}`;
-        if (liftWeightLabelEl) liftWeightLabelEl.textContent = `Weight (${state.unit === 'metric' ? 'kg' : 'lb'})`;
+        if (!liftAttendanceGridEl || !liftWeekCountEl) return;
+        const today = new Date(currentDateString + 'T12:00:00');
+        liftAttendanceGridEl.innerHTML = '';
 
-        const totals = { chest: 0, back: 0, leg: 0, sets: 0 };
-        lifts.forEach(({ lift }) => {
-            totals[lift.group] += 1;
-            totals.sets += lift.sets;
-        });
-        liftWeekSummaryEl.innerHTML = '';
-        [`${lifts.length} lift${lifts.length === 1 ? '' : 's'}`, `${totals.sets} sets`, `Chest ${totals.chest} · Back ${totals.back} · Leg ${totals.leg}`]
-            .forEach((text) => {
-                const span = document.createElement('span');
-                span.textContent = text;
-                liftWeekSummaryEl.appendChild(span);
-            });
+        for (let offset = 29; offset >= 0; offset -= 1) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - offset);
+            const day = getDateString(date);
+            const completed = Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length > 0;
+            const label = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = `lift-attendance-day${completed ? ' completed' : ''}`;
+            cell.title = `${label}: ${completed ? 'lift completed' : 'no lift'}`;
+            cell.setAttribute('aria-label', `${label}, ${completed ? 'lift completed' : 'no lift'}`);
+            cell.setAttribute('aria-pressed', completed ? 'true' : 'false');
+            cell.addEventListener('click', () => toggleLiftDay(day));
+            liftAttendanceGridEl.appendChild(cell);
+        }
 
-        liftListEl.innerHTML = '';
-        liftEmptyEl.style.display = lifts.length ? 'none' : 'block';
-        lifts.forEach(({ day, lift }) => {
-            const card = document.createElement('article');
-            card.className = `lift-card ${lift.group}`;
-
-            const group = document.createElement('div');
-            group.className = 'lift-card-group';
-            group.textContent = lift.group;
-
-            const main = document.createElement('div');
-            main.className = 'lift-card-main';
-            const title = document.createElement('div');
-            title.className = 'lift-card-title';
-            title.textContent = lift.exercise;
-            const detail = document.createElement('div');
-            detail.className = 'lift-card-detail';
-            const dayLabel = new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            const unit = state.unit === 'metric' ? 'kg' : 'lb';
-            const weight = Number.isInteger(lift.weight) ? lift.weight : lift.weight.toFixed(1);
-            detail.textContent = `${dayLabel} · ${lift.sets} × ${lift.reps} @ ${weight} ${unit}`;
-            main.appendChild(title);
-            main.appendChild(detail);
-
-            const remove = document.createElement('button');
-            remove.type = 'button';
-            remove.className = 'lift-card-delete';
-            remove.setAttribute('aria-label', `Delete ${lift.exercise}`);
-            remove.textContent = '×';
-            remove.addEventListener('click', () => deleteLift(day, lift.id));
-
-            card.appendChild(group);
-            card.appendChild(main);
-            card.appendChild(remove);
-            liftListEl.appendChild(card);
-        });
+        const week = liftWeekFor(currentDateString);
+        const completedThisWeek = Object.keys(state.liftHistory).filter((day) => (
+            day >= week.start && day <= week.end && Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length > 0
+        )).length;
+        liftWeekCountEl.textContent = `${completedThisWeek}/7`;
     }
 
-    function deleteLift(day, id) {
-        const remaining = (state.liftHistory[day] || []).filter((lift) => lift.id !== id);
-        if (remaining.length) state.liftHistory[day] = remaining;
-        else delete state.liftHistory[day];
+    function toggleLiftDay(day) {
+        if (Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length) {
+            delete state.liftHistory[day];
+        } else {
+            // Keep the established backup schema while the UI records only attendance.
+            state.liftHistory[day] = [{
+                id: nextEntryId(),
+                group: 'leg',
+                exercise: 'Workout',
+                sets: 1,
+                reps: 1,
+                weight: 0
+            }];
+        }
         saveState();
         renderLiftsTab();
     }
@@ -1761,40 +1723,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Tapping a meter box logs the pending amount to that meter.
         if (meterInEl) meterInEl.addEventListener('click', () => addEntry('in', pendingAmount));
         if (meterOutEl) meterOutEl.addEventListener('click', () => addEntry('out', pendingAmount));
-
-        // Weekly strength log: the shared selected date determines the workout day.
-        document.querySelectorAll('.lift-group-option').forEach((button) => {
-            button.addEventListener('click', () => {
-                currentLiftGroup = button.getAttribute('data-lift-group') || 'chest';
-                document.querySelectorAll('.lift-group-option').forEach((option) => {
-                    option.classList.toggle('active', option === button);
-                });
-            });
-        });
-        if (liftFormEl) {
-            liftFormEl.addEventListener('submit', (event) => {
-                event.preventDefault();
-                const exercise = liftExerciseEl ? liftExerciseEl.value.trim() : '';
-                const sets = Math.round(Number(liftSetsEl && liftSetsEl.value));
-                const reps = Math.round(Number(liftRepsEl && liftRepsEl.value));
-                const weight = Math.round(Number(liftWeightEl && liftWeightEl.value) * 2) / 2;
-                if (!exercise || !Number.isFinite(sets) || sets < 1 || sets > 20 ||
-                    !Number.isFinite(reps) || reps < 1 || reps > 100 ||
-                    !Number.isFinite(weight) || weight < 0 || weight > 5000) return;
-                state.liftHistory[viewingDateString] = state.liftHistory[viewingDateString] || [];
-                state.liftHistory[viewingDateString].push({
-                    id: nextEntryId(),
-                    group: currentLiftGroup,
-                    exercise: exercise.slice(0, 80),
-                    sets,
-                    reps,
-                    weight
-                });
-                saveState();
-                if (liftExerciseEl) liftExerciseEl.value = '';
-                renderLiftsTab();
-            });
-        }
 
         // Natural-language calorie entry. The server owns the OpenAI credential,
         // classifies food vs. exercise, and returns a compact estimate.

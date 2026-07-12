@@ -243,39 +243,19 @@
                 </div>
             </div>
 
-            <!-- WEEKLY LIFTS TAB -->
+            <!-- LIFT ATTENDANCE TAB -->
             <div id="tab-lifts" class="tab-pane">
-                <section class="lifts-week-headline">
-                    <div>
-                        <div class="lifts-title">Weekly lifts</div>
-                        <div class="lifts-week-range" id="lifts-week-range"></div>
-                    </div>
-                    <div class="lifts-legend" aria-label="Lift muscle group colors">
-                        <span class="lift-legend-chip chest">Chest</span>
-                        <span class="lift-legend-chip back">Back</span>
-                        <span class="lift-legend-chip leg">Leg</span>
-                    </div>
+                <section class="lift-attendance-card">
+                    <header>
+                        <div class="lifts-title">Lifts</div>
+                        <div class="lifts-range-label">Last 30 Days</div>
+                    </header>
+                    <div class="lift-attendance-grid" id="lift-attendance-grid" aria-label="Lift attendance for the last 30 days"></div>
+                    <footer class="lift-attendance-footer">
+                        <div><strong id="lift-week-count">0/7</strong> <span>this week</span></div>
+                        <span class="lift-attendance-hint">Tap a day to mark it</span>
+                    </footer>
                 </section>
-
-                <form id="lift-form" class="lift-composer">
-                    <div class="lift-group-picker" aria-label="Muscle group">
-                        <button type="button" class="lift-group-option chest active" data-lift-group="chest">Chest</button>
-                        <button type="button" class="lift-group-option back" data-lift-group="back">Back</button>
-                        <button type="button" class="lift-group-option leg" data-lift-group="leg">Leg</button>
-                    </div>
-                    <label class="sr-only" for="lift-exercise">Exercise</label>
-                    <input id="lift-exercise" type="text" maxlength="80" placeholder="Exercise, e.g. Bench press" required autocomplete="off">
-                    <div class="lift-number-grid">
-                        <label>Sets<input id="lift-sets" type="number" min="1" max="20" value="3" inputmode="numeric" required></label>
-                        <label>Reps<input id="lift-reps" type="number" min="1" max="100" value="8" inputmode="numeric" required></label>
-                        <label><span id="lift-weight-label">Weight (lb)</span><input id="lift-weight" type="number" min="0" max="5000" step="0.5" value="0" inputmode="decimal" required></label>
-                    </div>
-                    <button class="btn btn-primary" type="submit">Add lift for selected day</button>
-                </form>
-
-                <section class="lift-week-summary" id="lift-week-summary"></section>
-                <section class="lift-list" id="lift-list"></section>
-                <section class="lift-empty" id="lift-empty">No lifts logged this week.</section>
             </div>
 
             <!-- PROGRESS TAB -->
