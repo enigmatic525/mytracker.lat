@@ -38,6 +38,7 @@ struct ProgressPhotosView: View {
                     }
                 }
                 .padding()
+                .padding(.bottom, 24)
             }
             .navigationTitle("Progress")
             .navigationBarTitleDisplayMode(.inline)

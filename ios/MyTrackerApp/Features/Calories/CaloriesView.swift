@@ -22,6 +22,7 @@ struct CaloriesView: View {
                     entryLog
                 }
                 .padding()
+                .padding(.bottom, 24)
             }
             .navigationTitle("Calories")
             .navigationBarTitleDisplayMode(.inline)

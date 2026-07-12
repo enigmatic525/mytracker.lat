@@ -20,6 +20,7 @@ struct LiftsView: View {
                     liftList
                 }
                 .padding()
+                .padding(.bottom, 24)
             }
             .navigationTitle("Weekly Lifts")
             .navigationBarTitleDisplayMode(.inline)
@@ -166,7 +167,6 @@ struct LiftsView: View {
         }
         .padding()
         .background(datedLift.lift.group.faintColor, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.quaternary))
     }
 
     private func summaryMetric(_ title: String, value: Int, color: Color = .primary) -> some View {

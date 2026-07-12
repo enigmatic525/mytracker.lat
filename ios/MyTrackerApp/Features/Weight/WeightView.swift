@@ -16,6 +16,7 @@ struct WeightView: View {
                     historyList
                 }
                 .padding()
+                .padding(.bottom, 24)
             }
             .navigationTitle("Weight")
             .navigationBarTitleDisplayMode(.inline)

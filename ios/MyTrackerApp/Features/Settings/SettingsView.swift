@@ -56,6 +56,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: 24)
+            }
             .fileImporter(
                 isPresented: $isImporting,
                 allowedContentTypes: [.json],

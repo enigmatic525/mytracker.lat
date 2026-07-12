@@ -1723,7 +1723,7 @@ body {
 /* App container bottom padding clears the fixed bottom nav (which carries its own
    safe-area inset). The page stays locked; only .log-list scrolls. */
 .app-container {
-    padding-bottom: 84px;
+    padding-bottom: 104px;
     overflow: hidden;
     max-height: 100vh;
 }
@@ -1733,4 +1733,40 @@ body {
     flex-direction: column;
     flex: 1;
     min-height: 0;
+}
+
+/* Flat-surface pass: cards read as one quiet tone against the page instead of
+   light-gray outlined boxes. Inputs and selected controls retain their focus
+   treatment so the app stays operable. */
+.chart-section,
+.progress-bar-container,
+.meter-box,
+.log-box,
+.modal-content,
+.lifts-week-headline,
+.lift-composer,
+.lift-week-summary,
+.lift-card,
+#tab-progress .progress-headline,
+#tab-progress .progress-composer,
+#tab-progress .progress-upload-btn,
+#tab-progress .progress-photo-item,
+.chart-toggles,
+.chart-toggle.active,
+.weight-cell,
+.tutorial-content {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.log-box-in,
+.log-box-out,
+#tab-progress .progress-composer {
+    background: var(--surface-color);
+}
+
+.bottom-nav {
+    border-top: 0;
+    padding-top: 12px;
+    padding-bottom: max(28px, calc(env(safe-area-inset-bottom) + 12px));
 }
