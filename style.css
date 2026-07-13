@@ -1066,10 +1066,19 @@ body {
 
 .lift-attendance-grid {
     display: grid;
-    grid-template-columns: repeat(10, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 7px;
     margin: 16px 0;
 }
+
+.lift-attendance-weekday {
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1;
+    text-align: center;
+}
+
+.lift-attendance-blank { aspect-ratio: 1; }
 
 .lift-attendance-day {
     aspect-ratio: 1;
@@ -1077,6 +1086,10 @@ body {
     border: 0;
     border-radius: 3px;
     background: color-mix(in srgb, var(--text-secondary) 20%, transparent);
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
     transition: background-color 120ms ease, transform 120ms ease;
 }
@@ -1108,7 +1121,7 @@ body {
 .lift-attendance-hint { text-align: right; }
 
 @media (max-width: 380px) {
-    .lift-attendance-grid { gap: 5px; }
+    .lift-attendance-grid { gap: 6px; }
     .lift-attendance-hint { max-width: 92px; }
 }
 

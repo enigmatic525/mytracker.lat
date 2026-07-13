@@ -140,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressGalleryEl = document.getElementById('progress-gallery');
     const progressHeadlineEl = document.getElementById('progress-headline');
     const liftAttendanceGridEl = document.getElementById('lift-attendance-grid');
+    const liftMonthLabelEl = document.getElementById('lift-month-label');
     const liftWeekCountEl = document.getElementById('lift-week-count');
 
     const chartBarsEl = document.getElementById('chart-bars');
@@ -1058,13 +1059,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderLiftsTab() {
-        if (!liftAttendanceGridEl || !liftWeekCountEl) return;
+        if (!liftAttendanceGridEl || !liftMonthLabelEl || !liftWeekCountEl) return;
         const today = new Date(currentDateString + 'T12:00:00');
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const firstDay = new Date(year, month, 1, 12);
+        const daysInMonth = new Date(year, month + 1, 0, 12).getDate();
+
+        liftMonthLabelEl.textContent = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         liftAttendanceGridEl.innerHTML = '';
 
-        for (let offset = 29; offset >= 0; offset -= 1) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - offset);
+        ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((weekday) => {
+            const heading = document.createElement('span');
+            heading.className = 'lift-attendance-weekday';
+            heading.textContent = weekday;
+            liftAttendanceGridEl.appendChild(heading);
+        });
+
+        for (let blank = 0; blank < firstDay.getDay(); blank += 1) {
+            const spacer = document.createElement('span');
+            spacer.className = 'lift-attendance-blank';
+            spacer.setAttribute('aria-hidden', 'true');
+            liftAttendanceGridEl.appendChild(spacer);
+        }
+
+        for (let dateNumber = 1; dateNumber <= daysInMonth; dateNumber += 1) {
+            const date = new Date(year, month, dateNumber, 12);
             const day = getDateString(date);
             const group = Array.isArray(state.liftHistory[day]) ? state.liftHistory[day][0]?.group : null;
             const completed = group === 'chest' || group === 'back' || group === 'leg';
@@ -1073,6 +1093,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cell = document.createElement('button');
             cell.type = 'button';
             cell.className = `lift-attendance-day${completed ? ` ${group}` : ''}${day === currentDateString ? ' today' : ''}`;
+            cell.textContent = String(dateNumber);
             cell.title = `${label}: ${status}${day === currentDateString ? ' (today)' : ''}`;
             cell.setAttribute('aria-label', `${label}${day === currentDateString ? ', today' : ''}, ${status}`);
             cell.setAttribute('aria-pressed', completed ? 'true' : 'false');

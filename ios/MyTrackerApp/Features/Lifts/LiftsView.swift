@@ -6,7 +6,7 @@ struct LiftsView: View {
 
     private let columns = Array(
         repeating: GridItem(.flexible(), spacing: 6),
-        count: 10
+        count: 7
     )
 
     var body: some View {
@@ -16,14 +16,27 @@ struct LiftsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Lifts")
                             .font(.title3.weight(.semibold))
-                        Text("Last 30 Days")
+                        Text(monthLabel)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 2)
 
                         LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(attendanceDays, id: \.self) { date in
-                                attendanceButton(for: date)
+                            ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
+                                Text(symbol)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity)
+                            }
+
+                            ForEach(monthCells.indices, id: \.self) { index in
+                                if let date = monthCells[index] {
+                                    attendanceButton(for: date)
+                                } else {
+                                    Color.clear
+                                        .aspectRatio(1, contentMode: .fit)
+                                        .accessibilityHidden(true)
+                                }
                             }
                         }
                         .padding(.vertical, 16)
@@ -76,6 +89,10 @@ struct LiftsView: View {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(attendanceColor(for: group))
                     .padding(isToday ? 3 : 0)
+                Text("\(Calendar.current.component(.day, from: date))")
+                    .font(.caption2)
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
             }
             .aspectRatio(1, contentMode: .fit)
         }
@@ -94,12 +111,25 @@ struct LiftsView: View {
         }
     }
 
-    private var attendanceDays: [Date] {
+    private var weekdaySymbols: [String] {
+        Calendar.current.veryShortStandaloneWeekdaySymbols
+    }
+
+    private var monthLabel: String {
+        Date().formatted(.dateTime.month(.wide).year())
+    }
+
+    private var monthCells: [Date?] {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        return (0..<30).reversed().compactMap {
-            calendar.date(byAdding: .day, value: -$0, to: today)
+        let today = Date()
+        let components = calendar.dateComponents([.year, .month], from: today)
+        guard let firstDay = calendar.date(from: components),
+              let days = calendar.range(of: .day, in: .month, for: firstDay) else { return [] }
+        let leadingBlanks = calendar.component(.weekday, from: firstDay) - 1
+        let dates = days.compactMap { day -> Date? in
+            calendar.date(byAdding: .day, value: day - 1, to: firstDay)
         }
+        return Array(repeating: nil, count: leadingBlanks) + dates.map(Optional.some)
     }
 
     private var completedThisWeek: Int {
