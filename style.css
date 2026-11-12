@@ -1,1699 +1,486 @@
-:root {
-    /* The supplied iOS dashboard is the default, including during first paint. */
+:root,
+.theme-dark {
     --bg-color: #191919;
-    --surface-color: #292929;
-    --surface-hover: #353535;
-    --text-primary: #fffeff;
-    --text-secondary: #acacac;
-    --accent-primary: #79b1fb;
-    --accent-secondary: #8bbcff;
+    --surface-color: #191919;
+    --surface-hover: #252525;
+    --text-primary: #ededeb;
+    --text-secondary: #a2a2a0;
+    --accent-primary: #9fbddd;
+    --accent-secondary: #b4cbe4;
     --accent-contrast: #191919;
-    --danger: #ff9972;
-    --success: #6cc398;
-    --border-color: #424242;
-    --hairline: #353535;
-
-    /* The reference is set in Apple's San Francisco family. `-apple-system`
-       resolves to SF Pro on Apple devices and falls back to the native UI face. */
-    --font-main: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', sans-serif;
+    --danger: #dca69b;
+    --success: #b3c1b7;
+    --border-color: #41413f;
+    --hairline: #353533;
+    --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-weight-light: 400;
     --font-weight-regular: 400;
     --font-weight-medium: 500;
     --font-weight-bold: 600;
-    --radius-sm: 10px;
-    --radius-md: 14px;
-    --radius-lg: 20px;
-    --radius-full: 9999px;
-
-    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 2px;
     color-scheme: dark;
 }
 
 .theme-light {
-    --bg-color: #ffffff;
-    --surface-color: #ffffff;
-    --surface-hover: #f2f2f7;
-    --text-primary: #1c1c1e;
-    --text-secondary: #6e6e73;
-    --accent-primary: #4f8ff7;
-    --accent-secondary: #397be5;
-    --accent-contrast: #ffffff;
-    --danger: #d94f3d;
-    --success: #299e70;
-    --border-color: #d1d1d6;
-    --hairline: #e5e5ea;
+    --bg-color: #fafaf8;
+    --surface-color: #fafaf8;
+    --surface-hover: #eeeee9;
+    --text-primary: #242422;
+    --text-secondary: #686865;
+    --accent-primary: #315e8b;
+    --accent-secondary: #254c73;
+    --accent-contrast: #fafaf8;
+    --danger: #a44235;
+    --success: #4b6555;
+    --border-color: #c9c9c2;
+    --hairline: #deded8;
     color-scheme: light;
 }
 
-.theme-dark {
-    /* iOS charcoal palette sampled from the supplied dashboard reference. */
-    --bg-color: #191919;
-    --surface-color: #292929;
-    --surface-hover: #353535;
-    --text-primary: #fffeff;
-    --text-secondary: #acacac;
-    --accent-primary: #79b1fb;
-    --accent-secondary: #8bbcff;
-    --accent-contrast: #191919;
-    --danger: #ff9972;
-    --success: #6cc398;
-    --border-color: #424242;
-    --hairline: #353535;
-    color-scheme: dark;
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
+[hidden] { display: none !important; }
+
+body {
+    background: var(--bg-color);
+    color: var(--text-primary);
+    font: 14px/1.45 var(--font-main);
+    -webkit-font-smoothing: antialiased;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--app-height, 100dvh);
+    overflow: hidden;
+    overscroll-behavior: none;
+    display: flex;
+    justify-content: center;
 }
 
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+button, input { font: inherit; }
+button, [role="button"] { cursor: pointer; touch-action: manipulation; }
+button { color: inherit; }
+button:disabled { opacity: 0.35; cursor: not-allowed; }
+svg { flex-shrink: 0; }
+:where(button, input, summary, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 3px;
 }
-
 .sr-only {
     position: absolute;
     width: 1px;
     height: 1px;
-    padding: 0;
     margin: -1px;
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
-    border: 0;
 }
 
-body {
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    font-family: var(--font-main);
-    font-weight: var(--font-weight-regular);
-    display: flex;
-    justify-content: center;
-    height: 100vh;
-    overflow: hidden;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-    letter-spacing: -0.01em;
-}
-
+/* The viewport stays fixed; only ledgers, charts and dialogs can scroll. */
 .app-container {
     width: 100%;
-    max-width: 480px;
-    padding: 24px 24px 100px;
+    max-width: 520px;
+    height: 100%;
+    padding: max(10px, env(safe-area-inset-top)) 24px calc(58px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    gap: 16px;            /* compressed from 24px so the controls pack tighter */
-    height: 100vh;
-    /* The page itself never scrolls — content is laid out to fit the viewport and
-       only the log boxes scroll internally (see .log-list). */
     overflow: hidden;
-    box-sizing: border-box;
 }
-
-/* Large number displays use a lighter weight (typeface stays the app default). */
-#goal-display,
-#maint-display {
-    font-weight: var(--font-weight-light);
-}
-
-/* Header & Navigation */
 .header {
-    margin-bottom: 6px;
-}
-
-.date-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.date-titles {
-    text-align: center;
-}
-
-.date-titles h1 {
-    font-size: 21px;
-    font-weight: var(--font-weight-light);
-    letter-spacing: -0.01em;
-}
-
-.date-titles .date {
-    color: var(--text-secondary);
-    font-size: 11px;
-    margin-top: 4px;
-}
-
-.nav-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-sm);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-.nav-btn:hover:not(:disabled) {
-    background: var(--surface-hover);
-}
-
-.nav-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-/* Chart Section */
-.chart-section {
-    background: var(--surface-color);
-    border-radius: var(--radius-md);
-    padding: 24px 16px 12px 16px;
-    border: 1px solid var(--border-color);
     position: relative;
-    height: 160px;
-    display: flex;
-    flex-direction: column;
-}
-
-.chart-container {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-}
-
-.chart-goal-tick {
-    position: absolute;
-    left: 15%;
-    width: 70%;
-    border-top: 1px dashed var(--border-color);
-    /* bottom set by JS, per day */
-    z-index: 1;
-}
-
-.chart-plot-area {
-    position: relative;
-    width: 100%;
-    flex: 1;
-    display: flex;
-    align-items: flex-end;
-}
-
-/* Horizontal scroller through history. Same feel as the pending wheel: snap
-   per column, scrollbar hidden, edges faded with a mask. `scrollLeft` is set to
-   the far right by JS so the latest day shows first. */
-.chart-bars {
-    display: flex;
-    align-items: flex-end;
-    height: 100%;
-    width: 100%;
-    gap: 6px;
-    position: relative;
-    z-index: 2;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    -webkit-overflow-scrolling: touch;
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-    mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
-}
-.chart-bars::-webkit-scrollbar { display: none; }
-
-.chart-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 0 0 44px;          /* fixed width per day so the row can overflow & scroll */
-    height: 100%;
-    justify-content: flex-end;
-    scroll-snap-align: center;
-}
-
-/* The day label rides inside its column so it scrolls in sync with the bar. */
-.chart-col .chart-label {
-    margin-top: 6px;
-    flex: 0 0 auto;
-}
-
-.chart-bar-wrapper {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    flex: 1;
-    position: relative;
-}
-
-/* Per-day cals-out line (TDEE) — solid; sits at the day's burn level and rises
-   with extra activity. `bottom` is set inline by JS, per column. */
-.chart-out-tick {
-    position: absolute;
-    left: 15%;
-    width: 70%;
-    border-top: 1px solid var(--border-color);
-    z-index: 1;
-}
-/* The viewing day's line reads stronger than the rest of the week. */
-.chart-out-tick.active {
-    border-top-color: var(--text-secondary);
-}
-
-/* One bar per day spanning the gap between that day's cals-out line and actual
-   intake: green when consumption beat the day's TDEE (surplus), red when it fell
-   short (deficit). Its length is the size of that gap. `bottom`/`height` inline. */
-.chart-diff-bar {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 24px;
-    border-radius: var(--radius-sm);
-    z-index: 2;
-    transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
-}
-
-.chart-diff-bar.surplus { background: color-mix(in srgb, var(--success) 55%, transparent); }
-.chart-diff-bar.deficit { background: color-mix(in srgb, var(--danger) 55%, transparent); }
-/* The viewing day reads stronger than the rest of the week. */
-.chart-diff-bar.surplus.active { background: var(--success); }
-.chart-diff-bar.deficit.active { background: var(--danger); }
-
-.bar-diff-text {
-    color: var(--text-secondary);
-    font-size: 10px;
-    text-align: center;
-    position: absolute;
-    /* `top`/`bottom` set inline by JS to sit just past the bar's outer end. */
-    left: 0;
-    right: 0;
-    pointer-events: none;
-    z-index: 4;
-}
-
-.chart-label {
-    font-size: 10px;
-    color: var(--text-secondary);
-    text-align: center;
-    flex: 1;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Daily Progress Bar */
-.progress-section {
-    width: 100%;
-}
-
-.progress-bar-container {
-    width: 100%;
-    height: 8px;
-    background-color: var(--surface-hover);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    position: relative;
-    border: 1px solid var(--border-color);
-}
-
-.progress-bar-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--accent-primary);
-    border-radius: inherit;
-    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* In / Out meters — two translucent, tappable boxes. A tap logs the slider's
-   pending amount to that meter; the pencil edits the total directly. */
-.meters-row {
-    display: flex;
-    gap: 12px;
-}
-
-.meter-box {
-    flex: 1;
-    position: relative;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 10px 12px 11px;
-    text-align: center;
-    cursor: pointer;
-    transition: var(--transition);
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-.meter-box.meter-in {
-    background: color-mix(in srgb, var(--success) 10%, transparent);
-    border-color: color-mix(in srgb, var(--success) 35%, transparent);
-}
-
-.meter-box.meter-out {
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
-    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
-}
-
-.meter-box:active {
-    transform: scale(0.98);
-}
-
-@media (hover: hover) {
-    .meter-box.meter-in:hover {
-        background: color-mix(in srgb, var(--success) 18%, transparent);
-    }
-    .meter-box.meter-out:hover {
-        background: color-mix(in srgb, var(--danger) 18%, transparent);
-    }
-}
-
-.meter-label {
-    font-size: 12px;
-    color: var(--text-secondary);
-    font-weight: var(--font-weight-regular);
-    margin-bottom: 4px;
-}
-
-.meter-val {
-    font-size: 22px;
-    font-weight: var(--font-weight-light);
-    line-height: 1;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-    transition: transform 0.15s ease-out;
-}
-
-.meter-in .meter-val { color: var(--success); }
-.meter-out .meter-val { color: var(--danger); }
-
-/* "+N" preview of what a tap will log; empty (hidden) when the slider is at 0. */
-.meter-add-hint {
-    height: 10px;
-    margin-top: 2px;
-    font-size: 12px;
-    font-weight: var(--font-weight-medium);
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
-/* Chips — denomination buttons that stack into the pending amount. The pending
-   readout sits above the row (between the meters and the chips); the chips spread
-   across the row below it. Tap the pending number to clear it. */
-.chips-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-
-/* AI calorie entry — intentionally reads as a quiet text rule between the amount
-   wheel and the daily log, not as another card. */
-.ai-food-bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    min-height: 34px;
-    border-top: 1px solid var(--hairline);
+    flex-shrink: 0;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--hairline);
 }
+.date-nav {
+    display: grid;
+    grid-template-columns: 44px minmax(0, auto) 44px;
+    align-items: center;
+    justify-content: center;
+    column-gap: 10px;
+    margin: 0 36px;
+}
+.date-titles { text-align: center; min-width: 0; }
+.date-titles h1 { font-size: 21px; font-weight: 500; letter-spacing: -0.025em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.date-titles .date { margin-top: 3px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.nav-btn, #btn-settings, .close-modal, .cal-nav {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: none;
+    color: var(--text-secondary);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+#btn-settings { position: absolute; top: 0; right: -8px; }
+#btn-settings svg { width: 18px; height: 18px; }
+.tabs-container { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.tab-pane { display: none; }
+.tab-pane.active {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 8px;
+    gap: 8px;
+}
+.tab-pane > * { flex-shrink: 0; }
+.tracker-status { color: var(--danger); padding: 4px 0; font-size: 11px; max-height: 42px; flex-shrink: 0; overflow: auto; }
 
+/* Intake is the primary number; the daily goal stays beside it. */
+.daily-summary { margin-bottom: 0; }
+.summary-grid { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 24px; }
+.meter-box { -webkit-user-select: none; user-select: none; }
+.meter-label, .metric-label { font-size: 12px; color: var(--text-secondary); }
+.meter-in .meter-val {
+    font-size: 44px;
+    line-height: 1.12;
+    letter-spacing: -0.055em;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+}
+.metric-value { font-variant-numeric: tabular-nums; }
+.daily-goal { padding-top: 0; text-align: right; min-height: 56px; }
+.daily-goal .metric-value { font-size: 28px; line-height: 1.3; letter-spacing: -0.035em; }
+.edit-label { color: var(--accent-primary); font-size: 11px; margin-left: 7px; }
+.meter-add-hint { min-height: 18px; font-size: 12px; color: var(--accent-primary); }
+.progress-header { display: flex; justify-content: flex-end; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+.progress-bar-container { height: 3px; background: var(--hairline); overflow: hidden; }
+.progress-bar-fill { width: 0; height: 100%; background: var(--text-primary); }
+.burn-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 6px;
+}
+.burn-summary .meter-box, .burn-summary .metric-item { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 7px; }
+.burn-summary .meter-val, .burn-summary .metric-value { font-size: 14px; font-variant-numeric: tabular-nums; }
+.burn-summary .meter-add-hint { flex-basis: 100%; }
+.burn-summary .metric-item { justify-content: flex-end; min-height: 26px; }
+.daily-summary .meter-add-hint { display: none; }
+.burn-summary .edit-label { margin-left: 0; }
+
+/* Text entry and manual input share the same unboxed working surface. */
+.ai-food-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    border-bottom: 1px solid var(--border-color);
+}
 .ai-food-bar input {
     width: 100%;
     min-width: 0;
-    padding: 8px 38px 8px 2px;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 12px;
-    font-weight: var(--font-weight-regular);
-}
-
-.ai-food-bar input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.72;
-}
-
-.ai-food-bar button {
-    position: absolute;
-    right: 0;
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
+    padding: 8px 0;
     border: 0;
     background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: color 0.15s, opacity 0.15s;
-}
-
-.ai-food-bar:focus-within {
-    border-color: var(--text-secondary);
-}
-
-.ai-food-bar:focus-within button { color: var(--text-primary); }
-.ai-food-bar button:disabled { cursor: wait; opacity: 0.35; }
-
-.ai-food-status {
-    margin: -6px 4px 14px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.35;
-}
-
-.ai-food-status.error { color: var(--danger); }
-.ai-food-status.success { color: var(--success); }
-
-/* Running log — split into a green (In) and red (Out) box that line up under
-   their meters. Each entry is removable via its corner ×. */
-.log-boxes {
-    display: flex;
-    gap: 12px;
-    /* Absorb the leftover vertical space in the tab so the entry boxes — and only
-       the entry boxes — provide the page's scrolling. */
-    flex: 1;
-    min-height: 0;
-}
-
-.log-box {
-    flex: 1;
-    min-width: 0;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 6px;
-    min-height: 40px;
-    /* Column so the inner list can flex to the box height and scroll. */
-    display: flex;
-    flex-direction: column;
-}
-
-.log-box-in {
-    background: color-mix(in srgb, var(--surface-color) 90%, var(--surface-hover) 10%);
-    border-color: var(--border-color);
-}
-
-.log-box-out {
-    background: color-mix(in srgb, var(--surface-color) 90%, var(--surface-hover) 10%);
-    border-color: var(--border-color);
-}
-
-.log-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    /* Fill the box and scroll inside it: the page is locked, so a long day's
-       entries scroll here rather than growing the page past the viewport. */
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-.log-empty {
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-secondary);
-    padding: 12px 0;
-    opacity: 0.7;
-}
-
-/* Each entry is a defined chip: tinted fill + border in its type colour, the amount
-   on the left and a removal × on the right, so it reads as intentional. */
-.log-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 4px 8px 4px 12px;
-    font-variant-numeric: tabular-nums;
-}
-
-.log-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-}
-
-.log-label {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.log-item .log-amount {
-    flex: 0 0 auto;
-    font-size: 15px;
-    font-weight: var(--font-weight-medium);
-}
-
-.log-in .log-amount { color: var(--success); }
-.log-out .log-amount { color: var(--danger); }
-
-.log-delete {
-    flex: 0 0 auto;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 2px;
-    display: flex;
-    opacity: 0.6;
-    transition: var(--transition);
-}
-
-@media (hover: hover) {
-    .log-delete:hover { opacity: 1; color: var(--danger); }
-}
-
-.btn-icon-text {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    border: 1px solid transparent;
     color: var(--text-primary);
-    font-weight: var(--font-weight-regular);
     font-size: 14px;
-    font-family: var(--font-main);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
 }
-
-@media (hover: hover) {
-    .btn-icon-text:hover {
-        background: var(--surface-hover);
-        border-color: var(--border-color);
-    }
-}
-
-.btn-icon-text:active {
-    background: var(--border-color);
-    border-color: var(--border-color);
-}
-
-/* Modals */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: var(--transition);
-    z-index: 100;
-}
-
-.modal-overlay.active {
-    opacity: 1;
-    pointer-events: all;
-}
-
-.modal-content {
-    background-color: var(--surface-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    width: 90%;
-    max-width: 320px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    transform: translateY(20px);
-    transition: var(--transition);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
-}
-
-.modal-overlay.active .modal-content {
-    transform: translateY(0);
-}
-
-.modal-content h3 {
-    font-size: 16px;
-    font-weight: var(--font-weight-light);
-    margin-bottom: 8px;
-}
-
-/* ===== Wheel picker (shared) =====
-   A vertical scroll-snap column. Rows are 40px tall; the viewport shows a few of
-   them, so the center row sits under the highlight band and is the selected
-   value. The wrapper masks rows to fade toward the edges (same trick the
-   horizontal weight sheet uses, rotated to the vertical axis). Height/padding/
-   fade are CSS vars so one component serves both the tall modal picker and the
-   compact inline amount wheel — for centering to land cleanly on a row, keep
-   --wheel-pad = (--wheel-h − 40) / 2. */
-.wheel {
-    position: relative;
-    height: var(--wheel-h, 200px);
-    margin: 4px 0 8px;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--wheel-fade, 72px), #000 calc(100% - var(--wheel-fade, 72px)), transparent 100%);
-    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--wheel-fade, 72px), #000 calc(100% - var(--wheel-fade, 72px)), transparent 100%);
-}
-
-.wheel-scroll {
-    height: 100%;
-    overflow-y: auto;
-    scroll-snap-type: y mandatory;
-    scrollbar-width: none;            /* Firefox */
-    -ms-overflow-style: none;         /* old Edge */
-    -webkit-overflow-scrolling: touch;
-    padding: var(--wheel-pad, 80px) 0;
-}
-
-.wheel-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-.wheel-row {
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    scroll-snap-align: center;
-    font-family: var(--font-main);
-    font-size: 17px;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    opacity: 0.7;
-    transition: color 0.15s, font-size 0.15s, font-weight 0.15s, opacity 0.15s;
-    cursor: pointer;
-}
-
-/* The value currently centered under the highlight band. */
-.wheel-row.selected {
-    color: var(--text-primary);
-    font-size: 26px;
-    font-weight: var(--font-weight-medium);
-    opacity: 1;
-}
-
-.wheel-highlight {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 50%;
-    height: 40px;
-    transform: translateY(-50%);
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
-    pointer-events: none;
-}
-
-/* Unit label pinned just right of the centered value. */
-.wheel-unit {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(48px, -50%);
-    color: var(--text-secondary);
-    font-family: var(--font-main);
-    font-size: 13px;
-    pointer-events: none;
-}
-
-.wheel-clear {
-    display: block;
-    width: 100%;
-    margin-top: 12px;
+.ai-food-bar input:focus { outline-offset: 1px; }
+.ai-food-bar input::placeholder { color: var(--text-secondary); opacity: 1; }
+.ai-food-bar button {
+    height: 44px;
+    min-width: 44px;
+    border: 0;
     background: none;
-    border: none;
-    color: var(--danger);
-    font-family: var(--font-main);
-    font-size: 13px;
-    cursor: pointer;
+    color: var(--accent-primary);
+    font-weight: 500;
 }
-
-/* ===== Horizontal wheel (the calorie pending-amount picker) =====
-   The vertical wheel above, rotated onto the x-axis: a full-width row that
-   snap-scrolls left/right, the centered item being the selected value. Item
-   width is fixed (must match PENDING_ITEM_W in the JS); the side padding is
-   calc(50% − itemWidth/2) so the first/last item can reach the center, which
-   makes scrollLeft = index × itemWidth land cleanly on each item. */
-.hwheel {
-    position: relative;
-    width: 100%;
-    height: 40px;
-    margin: 2px 0;
-    /* Fade the left/right edges so off-center values dissolve out. */
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%);
-    mask-image: linear-gradient(to right, transparent 0, #000 72px, #000 calc(100% - 72px), transparent 100%);
-}
-
+.ai-food-status, .estimate-details { color: var(--text-secondary); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.ai-food-status { max-height: 34px; overflow-y: auto; }
+.estimate-details { position: relative; }
+.ai-food-status.error { color: var(--danger); }
+.estimate-details summary { width: fit-content; cursor: pointer; color: var(--text-secondary); }
+.estimate-details p { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; padding: 10px; max-height: 160px; overflow-y: auto; background: var(--bg-color); border: 1px solid var(--border-color); }
+.section-label { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
+.chips-section { padding: 0; }
+.hwheel { position: relative; width: 100%; height: 34px; margin-top: 0; touch-action: pan-x pinch-zoom; user-select: none; -webkit-user-select: none; }
 .hwheel-scroll {
-    height: 100%;
     display: flex;
+    height: 100%;
     align-items: center;
     overflow-x: auto;
     overflow-y: hidden;
     scroll-snap-type: x mandatory;
-    scrollbar-width: none;            /* Firefox */
-    -ms-overflow-style: none;         /* old Edge */
-    -webkit-overflow-scrolling: touch;
-    padding: 0 calc(50% - 36px);      /* 36 = item width (72) / 2 */
+    touch-action: pan-x pinch-zoom;
+    scrollbar-width: none;
+    padding: 0 calc(50% - 36px);
 }
-
-.hwheel-scroll::-webkit-scrollbar {
-    display: none;
-}
-
+.hwheel-scroll::-webkit-scrollbar, .wheel-scroll::-webkit-scrollbar { display: none; }
 .hwheel-item {
     flex: 0 0 72px;
     height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    scroll-snap-align: center;
-    font-family: var(--font-main);
-    font-variant-numeric: tabular-nums;
-    font-size: 15px;
-    color: var(--text-secondary);
-    opacity: 0.6;
-    transition: color 0.15s, font-size 0.15s, font-weight 0.15s, opacity 0.15s;
-    cursor: pointer;
-}
-
-/* The value currently centered under the highlight band. */
-.hwheel-item.selected {
-    color: var(--text-primary);
-    font-size: 22px;
-    font-weight: var(--font-weight-medium);
-    opacity: 1;
-}
-
-.hwheel-highlight {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    width: 72px;
-    transform: translateX(-50%);
-    border-left: 1px solid var(--border-color);
-    border-right: 1px solid var(--border-color);
-    pointer-events: none;
-}
-
-.modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 8px;
-}
-
-.btn {
-    font-family: var(--font-main);
-    font-size: 12px;
-    font-weight: var(--font-weight-regular);
-    letter-spacing: -0.01em;
-    padding: 10px 20px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: var(--transition);
-    border: 1px solid transparent;
-}
-
-.btn-secondary {
-    background-color: transparent;
-    color: var(--text-secondary);
-    border-color: var(--border-color);
-}
-
-@media (hover: hover) {
-    .btn-secondary:hover {
-        color: var(--text-primary);
-        border-color: var(--text-secondary);
-    }
-}
-
-.btn-primary {
-    background-color: var(--accent-primary);
-    color: var(--accent-contrast);
-    border-color: var(--accent-primary);
-}
-
-@media (hover: hover) {
-    .btn-primary:hover {
-        opacity: 0.85;
-    }
-}
-
-/* Custom calendar popup — built from the shared modal shell so it matches the
-   rest of the page (surface, border, type, accent for the selected day). */
-.calendar-content {
-    gap: 12px;
-    max-width: 300px;
-}
-
-.cal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.cal-month-label {
-    font-size: 14px;
-    font-weight: var(--font-weight-medium);
-}
-
-.cal-nav {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-.cal-nav:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-@media (hover: hover) {
-    .cal-nav:not(:disabled):hover {
-        background: var(--surface-hover);
-        border-color: var(--text-secondary);
-    }
-}
-
-/* Weekday header and day grid share the 7-column layout so columns line up. */
-.cal-weekdays,
-.cal-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
-}
-
-.cal-weekdays span {
-    text-align: center;
-    font-size: 11px;
-    color: var(--text-secondary);
-    padding: 2px 0;
-}
-
-.cal-cell {
-    /* Square cells regardless of width. */
-    aspect-ratio: 1 / 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-}
-
-/* Empty leading slots before the 1st keep the grid aligned but show nothing. */
-.cal-blank {
-    visibility: hidden;
-}
-
-.cal-day {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-family: var(--font-main);
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-@media (hover: hover) {
-    .cal-day:not(:disabled):hover {
-        background: var(--surface-hover);
-    }
-}
-
-/* Future days can't be selected. */
-.cal-day:disabled {
-    color: var(--text-secondary);
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-/* Today gets a subtle outline; the day being viewed gets the solid accent fill. */
-.cal-day.cal-today {
-    border-color: var(--border-color);
-}
-
-.cal-day.cal-selected {
-    background: var(--accent-primary);
-    color: var(--accent-contrast);
-    border-color: var(--accent-primary);
-}
-
-@media (hover: hover) {
-    .cal-day.cal-selected:hover {
-        background: var(--accent-secondary);
-    }
-}
-
-/* Responsive adjustments */
-@media (max-width: 480px) {
-    .app-container {
-        padding: 24px 16px;
-        gap: 16px;
-    }
-}
-
-@media (max-width: 380px) {
-    .app-container {
-        padding: 16px 8px;
-        gap: 14px;
-    }
-
-    .meter-val {
-        font-size: 20px;
-    }
-
-    .date-titles h1 {
-        font-size: 24px;
-    }
-}
-/* Tabs & Bottom Nav */
-.tab-pane {
-    display: none;
-    flex-direction: column;
-    gap: 16px;
-    animation: fadeIn 0.2s ease-out;
-}
-
-.tab-pane.active {
-    display: flex;
-    /* Fill the tabs-container so the log boxes can absorb the leftover height. */
-    flex: 1;
-    min-height: 0;
-}
-
-/* The calorie home view is vertically compressed to 80% of its former fixed
-   control heights and spacing. The daily log keeps the reclaimed room. */
-#tab-calories {
-    gap: 13px;
-}
-
-#tab-calories .chart-section {
-    height: 128px;
-    padding: 19px 13px 10px;
-}
-
-#tab-calories .progress-section {
-    margin-bottom: 18px !important;
-}
-
-#tab-calories .metrics-row {
-    padding: 6px 0 !important;
-}
-
-#tab-calories .meter-box {
-    padding: 8px 10px 9px;
-}
-
-#tab-calories .hwheel {
-    height: 32px;
-    margin: 1px 0;
-}
-
-#tab-calories .meter-val { font-size: 20px; }
-#tab-calories .meter-add-hint { height: 8px; font-size: 10px; }
-
-#tab-weight.active {
-    flex-direction: column;
-    gap: 16px;
-}
-
-#tab-lifts.active {
-    flex-direction: column;
-    justify-content: flex-start;
-    min-height: 0;
-}
-
-.lift-attendance-card {
-    border-radius: var(--radius-md);
-    background: var(--surface-color);
-    padding: 16px;
-}
-
-.lifts-title {
-    font-size: 18px;
-    font-weight: var(--font-weight-medium);
-}
-
-.lifts-range-label {
-    margin-top: 3px;
-    color: var(--text-secondary);
-    font-size: 13px;
-}
-
-.lift-attendance-grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 7px;
-    margin: 16px 0;
-}
-
-.lift-attendance-weekday {
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1;
-    text-align: center;
-}
-
-.lift-attendance-blank { aspect-ratio: 1; }
-
-.lift-attendance-day {
-    aspect-ratio: 1;
-    min-width: 0;
-    border: 0;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--text-secondary) 20%, transparent);
-    color: var(--text-primary);
-    font-family: var(--font-main);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
-    transition: background-color 120ms ease, transform 120ms ease;
-}
-
-.lift-attendance-day.chest { background: rgba(255, 110, 110, 0.58); }
-.lift-attendance-day.back { background: rgba(105, 165, 255, 0.62); }
-.lift-attendance-day.leg { background: rgba(101, 190, 139, 0.72); }
-.lift-attendance-day.today { outline: 1px dashed var(--text-secondary); outline-offset: 2px; }
-.lift-attendance-day:active { transform: scale(0.88); }
-.lift-attendance-day:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
-
-.lift-attendance-footer {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    border-top: 1px solid color-mix(in srgb, var(--text-secondary) 14%, transparent);
-    padding-top: 12px;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-.lift-attendance-footer strong {
-    color: var(--text-primary);
-    font-size: 18px;
-    font-weight: var(--font-weight-medium);
-}
-
-.lift-attendance-hint { text-align: right; }
-
-@media (max-width: 380px) {
-    .lift-attendance-grid { gap: 6px; }
-    .lift-attendance-hint { max-width: 92px; }
-}
-
-#tab-progress.active {
-    flex-direction: column;
-    gap: 12px;
-}
-
-#tab-progress .progress-headline {
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 10px 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
-    background: var(--surface-color);
-}
-
-#tab-progress .progress-headline-title {
-    font-size: 13px;
-    font-weight: var(--font-weight-medium);
-    line-height: 1.2;
-    color: var(--text-primary);
-}
-
-#tab-progress .progress-headline-subtitle {
-    margin-top: 4px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    line-height: 1.35;
-}
-
-#tab-progress .progress-composer {
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 8px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: color-mix(in srgb, var(--surface-color) 85%, transparent);
-}
-
-#tab-progress .progress-composer-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-#tab-progress .progress-upload-btn {
-    background: var(--surface-hover);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    border-radius: var(--radius-md);
-    padding: 8px 12px;
-    cursor: pointer;
-    font-size: 12px;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    user-select: none;
-}
-
-#tab-progress .progress-upload-btn svg {
-    opacity: 0.8;
-}
-
-#tab-progress input#progress-photo-input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-    pointer-events: none;
-}
-
-#tab-progress .progress-empty {
-    font-size: 12px;
-    color: var(--text-secondary);
-    text-align: center;
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 12px 12px;
-}
-
-#tab-progress .progress-gallery {
-    display: flex;
-    gap: 8px;
-    flex: 1;
-    min-height: 120px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding-bottom: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-color) transparent;
-}
-
-#tab-progress .progress-gallery::-webkit-scrollbar {
-    height: 8px;
-}
-
-#tab-progress .progress-gallery::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: var(--radius-full);
-}
-
-#tab-progress .progress-photo-item {
-    position: relative;
-    flex: 0 0 160px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 6px;
-    background: var(--surface-color);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-#tab-progress .progress-photo-item img {
-    display: block;
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    border-radius: 6px;
-}
-
-#tab-progress .progress-photo-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-secondary);
-    font-size: 10px;
-}
-
-#tab-progress .progress-photo-caption {
-    color: var(--text-primary);
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-}
-
-#tab-progress .progress-photo-delete {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
-    border: 1px solid var(--border-color);
-    background: var(--surface-color);
-    color: var(--text-secondary);
     display: grid;
     place-items: center;
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    z-index: 2;
-}
-
-#tab-progress .progress-photo-delete:hover {
-    color: var(--danger);
-}
-
-#weight-chart-section {
-    height: 180px;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(5px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideInRight {
-    from { opacity: 0; transform: translateX(30px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes slideOutLeft {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(-30px); }
-}
-
-@keyframes slideInLeft {
-    from { opacity: 0; transform: translateX(-30px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes slideOutRight {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(30px); }
-}
-
-.slide-in-right { animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; }
-.slide-in-left { animation: slideInLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; }
-.slide-out-left { animation: slideOutLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; position: absolute; top: 0; left: 0; right: 0; z-index: -1; }
-.slide-out-right { animation: slideOutRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important; position: absolute; top: 0; left: 0; right: 0; z-index: -1; }
-
-.bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--surface-color);
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-around;
-    padding: 18px 16px;
-    padding-bottom: max(18px, env(safe-area-inset-bottom));
-    z-index: 100;
-}
-
-.bottom-nav-inner {
-    width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-around;
-}
-
-.nav-tab {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: var(--font-weight-medium);
-    font-family: var(--font-main);
-    cursor: pointer;
-    padding: 8px 12px;
-    transition: var(--transition);
-    border-radius: 0;
-    position: relative;
-}
-
-.nav-tab::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 20%;
-    right: 20%;
-    height: 1px;
-    background: var(--text-primary);
-    transform: scaleX(0);
-    transition: transform 0.2s ease;
-}
-
-.nav-tab.active {
-    color: var(--text-primary);
-    background: none;
-}
-
-.nav-tab.active::after {
-    transform: scaleX(1);
-}
-
-/* Weight and Lifts Helpers */
-.chart-toggles {
-    display: flex;
-    background: var(--surface-hover);
-    padding: 2px;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--border-color);
-}
-
-.chart-toggle {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-full);
-    cursor: pointer;
-    transition: var(--transition);
-}
-
-.chart-toggle.active {
-    background: var(--surface-color);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-}
-
-/* Weight chart — SVG for the lines (they stretch cleanly), HTML for the dots
-   and scrubber so they stay perfectly round at any container aspect ratio. */
-/* CSS Grid keeps the four pieces aligned by construction:
-   col 1 = y-axis gutter, col 2 = chart area; row 1 = chart, row 2 = x-axis.
-   The chart area and the x-axis row both live in column 2 (identical width and
-   x-origin); the y-axis shares row 1 with the area (identical height). Nothing
-   computes its own offset, so the pieces cannot drift out of alignment. */
-.weight-chart {
-    display: grid;
-    grid-template-columns: 38px 1fr;
-    grid-template-rows: 1fr auto;
-    flex: 1;
-    min-height: 0;
-    margin-top: 4px;
-}
-
-.weight-chart-yaxis {
-    grid-column: 1;
-    grid-row: 1;
-    position: relative;          /* containing block for the % -positioned labels */
-    min-width: 0;
-    pointer-events: none;
-}
-
-.weight-chart-yaxis div {
-    position: absolute;
-    right: 6px;
-    transform: translateY(-50%); /* JS overrides for the first/last tick */
-    font-size: 10px;
-    line-height: 1;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
-/* The chart area. The SVG (lines), the dot layer and the pointer overlay each
-   fill it exactly (inset:0), so lines, dots and hit-testing share one space. */
-.weight-chart-area {
-    grid-column: 2;
-    grid-row: 1;
-    position: relative;
-    min-width: 0;
-    min-height: 0;
-}
-
-.weight-chart-svg,
-.weight-chart-dots,
-.weight-chart-overlay {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-}
-
-.weight-chart-svg {
-    display: block;
-}
-
-.weight-chart-dots {
-    pointer-events: none;
-}
-
-.weight-chart-overlay {
-    cursor: crosshair;
-}
-
-.weight-dot {
-    position: absolute;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent-primary);
-    border: 1.5px solid var(--bg-color);
-    transform: translate(-50%, -50%);
-}
-
-.weight-chart-scrubdot {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent-primary);
-    border: 2px solid var(--bg-color);
-    transform: translate(-50%, -50%);
-    z-index: 4;
-}
-
-.weight-chart-label {
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    pointer-events: none;
-    z-index: 5;
-    white-space: nowrap;
-}
-
-.weight-chart-empty {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
-/* The weight chart's dots sit at true data x-coordinates, so its x-axis labels
-   must too — positioned absolutely by JS (left:%). The row is grid column 2,
-   so it is exactly as wide as, and aligned with, the chart area above it. */
-#weight-x-axis {
-    grid-column: 2;
-    grid-row: 2;
-    display: block;
-    position: relative;
-    height: 13px;
-    margin: 8px 0 0 0;
-    padding: 0;
-    min-width: 0;
-}
-
-#weight-x-axis .chart-label {
-    position: absolute;
-    transform: translateX(-50%);
-    white-space: nowrap;
-}
-
-/* Weight entry sheet — horizontal scrolling row of day cells */
-.weight-sheet-section {
-    width: 100%;
-}
-
-.weight-sheet-wrap {
-    position: relative;
-    /* Fade the row out at both edges. */
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%);
-    mask-image: linear-gradient(to right, transparent 0, #000 40px, #000 calc(100% - 40px), transparent 100%);
-}
-
-.weight-sheet {
-    display: flex;
-    gap: 6px;
-    padding: 8px 40px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;        /* Firefox */
-    -ms-overflow-style: none;     /* old Edge */
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
-}
-
-.weight-sheet::-webkit-scrollbar {
-    display: none;
-}
-
-.weight-cell {
-    flex: 0 0 auto;
-    width: 62px;
-    height: 62px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    background: var(--surface-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    font-family: var(--font-main);
-    cursor: pointer;
-    transition: var(--transition);
     scroll-snap-align: center;
-    padding: 0;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    cursor: pointer;
 }
+.hwheel-item.selected { color: var(--text-primary); font-size: 22px; }
+.hwheel-highlight { position: absolute; inset: 0 auto 0 50%; width: 72px; transform: translateX(-50%); border-bottom: 1px solid var(--text-primary); pointer-events: none; }
+
+/* Entries are rows, separated only where the data needs a boundary. */
+.log-boxes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 0; flex: 1 1 0; min-height: 0; overflow: hidden; }
+.log-box { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.log-box .section-label { flex-shrink: 0; padding-bottom: 5px; border-bottom: 1px solid var(--hairline); }
+.log-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
+.log-list:empty { flex: 0; }
+.log-empty { padding: 14px 0; font-size: 12px; color: var(--text-secondary); }
+.log-item { flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-height: 50px; border-bottom: 1px solid var(--hairline); padding: 9px 0; font-variant-numeric: tabular-nums; }
+.log-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.log-amount { font-size: 15px; }
+.log-label { font-size: 12px; line-height: 1.35; color: var(--text-secondary); overflow-wrap: anywhere; }
+.log-delete { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 36px; border: 0; background: none; color: var(--text-secondary); }
+
+/* History keeps its established geometry, without a surrounding card. */
+.chart-section { position: relative; height: clamp(82px, 14dvh, 120px); padding: 6px 0 0; display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
+.chart-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 5px; }
+#weekly-difference-label { color: var(--text-secondary); font-size: 11px; }
+.chart-container { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
+.chart-plot-area { position: relative; flex: 1; min-height: 0; display: flex; align-items: flex-end; }
+.chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 100%; width: 100%; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: var(--border-color) transparent; }
+.chart-col { display: flex; flex-direction: column; align-items: center; flex: 0 0 44px; height: 100%; scroll-snap-align: center; }
+.chart-bar-wrapper { width: 100%; flex: 1; position: relative; min-height: 0; }
+.chart-col .chart-label { margin-top: 7px; flex: 0 0 auto; }
+.chart-label { font-size: 10px; color: var(--text-secondary); text-align: center; font-variant-numeric: tabular-nums; }
+.chart-goal-tick, .chart-out-tick { position: absolute; left: 15%; width: 70%; z-index: 1; }
+.chart-goal-tick { border-top: 1px dashed var(--text-secondary); }
+.chart-out-tick { border-top: 1px solid var(--border-color); }
+.chart-out-tick.active { border-color: var(--text-primary); }
+.chart-diff-bar { position: absolute; left: 50%; transform: translateX(-50%); width: 20px; z-index: 2; background: var(--text-secondary); opacity: 0.6; }
+.chart-diff-bar.active { background: var(--text-primary); opacity: 1; }
+.bar-diff-text { position: absolute; left: 0; right: 0; font-size: 10px; text-align: center; color: var(--text-secondary); z-index: 4; pointer-events: none; }
+
+/* Weight: range choices, plot, then the daily ledger. */
+#tab-weight { gap: 10px; }
+#weight-chart-section { height: auto; flex: 1 1 0; min-height: 100px; border-top: 0; padding-top: 34px; }
+.chart-toggles { position: absolute; top: 0; right: 0; display: flex; gap: 14px; }
+.chart-toggle { min-width: 32px; height: 32px; border: 0; border-bottom: 1px solid transparent; color: var(--text-secondary); background: none; font-size: 12px; }
+.chart-toggle.active { border-color: var(--text-primary); color: var(--text-primary); }
+.weight-chart { display: grid; grid-template-columns: 38px 1fr; grid-template-rows: 1fr auto; flex: 1; min-height: 0; }
+.weight-chart-yaxis { grid-column: 1; grid-row: 1; position: relative; min-width: 0; pointer-events: none; }
+.weight-chart-yaxis div { position: absolute; right: 8px; transform: translateY(-50%); font-size: 10px; line-height: 1; color: var(--text-secondary); white-space: nowrap; }
+.weight-chart-area { grid-column: 2; grid-row: 1; position: relative; min-width: 0; min-height: 0; }
+.weight-chart-dots, .weight-chart-svg { overflow: hidden; }
+.weight-chart-svg, .weight-chart-dots, .weight-chart-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+.weight-chart-svg { display: block; }
+.weight-chart-dots { pointer-events: none; }
+.weight-chart-overlay { cursor: crosshair; }
+.weight-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--text-primary); border: 1px solid var(--bg-color); transform: translate(-50%, -50%); }
+.weight-chart-scrubdot { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--text-primary); border: 1px solid var(--bg-color); transform: translate(-50%, -50%); z-index: 4; }
+.weight-chart-label { position: absolute; top: 2px; left: 4px; font-size: 12px; color: var(--text-secondary); pointer-events: none; z-index: 5; white-space: nowrap; }
+.weight-chart-empty { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; font-size: 12px; color: var(--text-secondary); }
+#weight-x-axis { grid-column: 2; grid-row: 2; position: relative; height: 14px; margin-top: 9px; min-width: 0; }
+#weight-x-axis .chart-label { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+#weight-x-axis .chart-label:first-child { transform: none; }
+#weight-x-axis .chart-label:last-child { transform: translateX(-100%); }
+.weight-summary { color: var(--text-secondary); font-size: 11px; line-height: 1.4; max-height: 30px; overflow-y: auto; }
+.weight-metrics { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--hairline); padding: 8px 0 10px; }
+.weight-metrics .metric-value { font-size: 22px; margin-top: 4px; letter-spacing: -0.02em; }
+.metric-unit { font-size: 12px; color: var(--text-secondary); }
+.weight-sheet { display: flex; gap: 0; padding: 0 4px 12px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.weight-cell { flex: 0 0 62px; height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 0; border-bottom: 1px solid var(--hairline); background: none; color: var(--text-secondary); scroll-snap-align: center; }
+.weight-cell-date { font-size: 10px; }
+.weight-cell-val { font-size: 17px; font-variant-numeric: tabular-nums; }
+.weight-cell.filled .weight-cell-val { color: var(--text-primary); }
+.weight-cell.viewing { border-bottom-color: var(--text-primary); }
+.weight-cell.today .weight-cell-date { color: var(--text-primary); }
+.weight-cell.future { opacity: 0.35; cursor: default; pointer-events: none; }
+
+/* Attendance colors represent the saved lift group, rather than ornament. */
+.lifts-title, .progress-headline-title { font-size: 18px; font-weight: 500; letter-spacing: -0.02em; }
+.lifts-range-label { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
+.lift-attendance-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 7px; margin: 24px 0; }
+.lift-attendance-weekday { color: var(--text-secondary); font-size: 11px; text-align: center; padding-bottom: 6px; }
+.lift-attendance-blank { aspect-ratio: 1; }
+.lift-attendance-day { aspect-ratio: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--hairline); background: none; font-size: 12px; font-variant-numeric: tabular-nums; }
+.lift-attendance-kind { font-size: 9px; line-height: 1.1; }
+.lift-attendance-day.chest { background: #785550; color: #fff; border-color: transparent; }
+.lift-attendance-day.back { background: #53677b; color: #fff; border-color: transparent; }
+.lift-attendance-day.leg { background: #526d5c; color: #fff; border-color: transparent; }
+.lift-attendance-day.today { outline: 1px solid var(--text-secondary); outline-offset: 2px; }
+.lift-attendance-footer { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; padding-top: 16px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-size: 12px; }
+.lift-attendance-footer strong { font-size: 20px; color: var(--text-primary); font-weight: 400; }
+
+/* Photos retain their original upload and horizontal browsing behavior. */
+#tab-progress { gap: 20px; }
+.progress-headline-subtitle:empty { display: none; }
+.progress-headline-subtitle { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.progress-composer-row { display: flex; align-items: center; }
+.progress-upload-btn { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-primary); cursor: pointer; }
+#progress-photo-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.progress-empty { padding: 16px 0; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--text-secondary); }
+.progress-gallery { display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; padding-bottom: 12px; min-height: 0; }
+.progress-photo-item { position: relative; flex: 0 0 220px; display: flex; flex-direction: column; gap: 8px; }
+.progress-photo-item img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.progress-photo-meta { color: var(--text-secondary); font-size: 11px; }
+.progress-photo-caption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.progress-photo-delete { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; background: var(--bg-color); color: var(--text-primary); display: grid; place-items: center; font-size: 20px; }
+
+/* The four sections are links in a stable bottom rail. */
+.bottom-nav { position: absolute; inset: auto 0 0; background: var(--bg-color); z-index: 100; padding: 0 24px env(safe-area-inset-bottom); }
+.bottom-nav-inner { display: flex; max-width: 464px; margin: 0 auto; border-top: 1px solid var(--hairline); justify-content: space-between; }
+.nav-tab { height: 50px; padding: 0 8px; background: none; border: 0; color: var(--text-secondary); font-size: 13px; }
+.nav-tab.active { color: var(--text-primary); text-decoration: underline; text-underline-offset: 7px; text-decoration-thickness: 1px; }
+
+/* Dialogs are plain, compact forms. Their focus and visibility are managed in JS. */
+.modal-overlay { position: absolute; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(0, 0, 0, 0.55); visibility: hidden; pointer-events: none; }
+.modal-overlay.active { visibility: visible; pointer-events: auto; }
+.modal-content { width: 100%; max-width: 340px; max-height: calc(var(--app-height, 100dvh) - 24px); overflow-y: auto; padding: 24px; background: var(--bg-color); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 18px; }
+.modal-content h3, .modal-content h2 { font-size: 18px; font-weight: 500; letter-spacing: -0.02em; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; }
+.close-modal { font-size: 26px; margin: -10px -12px -10px 0; }
+.modal-body { display: flex; flex-direction: column; gap: 24px; }
+.field-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 10px; }
+.segmented-control { display: flex; gap: 10px; }
+.segmented-control .btn { flex: 1; padding-left: 10px; padding-right: 10px; }
+.help-text { color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.help-text:empty { display: none; }
+#backup-export-status { margin-top: 10px; }
+#btn-export-backup { width: 100%; }
+.btn { min-height: 44px; padding: 10px 16px; border: 1px solid var(--border-color); background: transparent; font-size: 13px; }
+.btn-secondary { color: var(--text-secondary); }
+.btn-primary { color: var(--accent-primary); border-color: var(--accent-primary); }
+.btn-icon-text { width: 48px; padding: 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 4px; }
+.number-stepper { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#goal-display, #maint-display { min-width: 100px; text-align: center; font-size: 36px; font-variant-numeric: tabular-nums; letter-spacing: -0.035em; }
+.wheel { position: relative; height: 200px; flex-shrink: 0; }
+.wheel-scroll { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; padding: 80px 0; }
+.wheel-row { height: 40px; display: flex; align-items: center; justify-content: center; scroll-snap-align: center; font-size: 16px; color: var(--text-secondary); font-variant-numeric: tabular-nums; cursor: pointer; }
+.wheel-row.selected { color: var(--text-primary); font-size: 26px; }
+.wheel-highlight { position: absolute; inset: 50% 0 auto; height: 40px; transform: translateY(-50%); border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); pointer-events: none; }
+.wheel-unit { position: absolute; left: 50%; top: 50%; transform: translate(48px, -50%); font-size: 12px; color: var(--text-secondary); }
+.wheel-clear { min-height: 44px; border: 0; background: none; color: var(--danger); font-size: 12px; }
+.weight-value-input { width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border-color); background: none; color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums; }
+.cal-header { display: flex; align-items: center; justify-content: space-between; }
+.cal-month-label { font-size: 14px; }
+.cal-weekdays, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-weekdays { color: var(--text-secondary); font-size: 11px; text-align: center; }
+.cal-cell { aspect-ratio: 1; display: grid; place-items: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cal-blank { visibility: hidden; }
+.cal-day { border: 1px solid transparent; background: none; color: var(--text-primary); }
+.cal-today { border-color: var(--border-color); }
+.cal-selected { background: var(--text-primary); color: var(--bg-color); }
+#weight-dot-popup { position: fixed; z-index: 200; min-width: 140px; padding: 8px 0; background: var(--bg-color); border: 1px solid var(--border-color); }
+#weight-dot-popup-date { padding: 6px 14px 8px; color: var(--text-secondary); font-size: 11px; border-bottom: 1px solid var(--hairline); }
+#weight-dot-popup button { display: block; width: 100%; min-height: 44px; text-align: left; padding: 10px 14px; border: 0; background: none; font-size: 14px; }
+#weight-dot-delete-btn { color: var(--danger); }
 
 @media (hover: hover) {
-    .weight-cell:hover {
-        background: var(--surface-hover);
-        border-color: var(--text-secondary);
-    }
+    button:not(:disabled):hover, [role="button"]:hover { color: var(--accent-primary); }
+    .cal-day:not(:disabled):hover, .weight-cell:not(.future):hover { background: var(--surface-hover); }
+    .log-delete:hover { color: var(--danger); }
+}
+@media (max-width: 600px) {
+    .ai-food-bar input { font-size: 16px; }
+}
+@media (max-width: 380px) {
+    .app-container { padding-left: 18px; padding-right: 18px; }
+    .meter-in .meter-val { font-size: 40px; }
+    .burn-summary { gap: 10px; }
+    .burn-summary .metric-label { font-size: 11px; }
+    .log-boxes { gap: 18px; }
+    .bottom-nav { padding-left: 18px; padding-right: 18px; }
+    .nav-tab { padding: 0 4px; }
+    .lift-attendance-grid { gap: 5px; }
+}
+@media (max-height: 650px) {
+    .app-container { padding-top: max(12px, env(safe-area-inset-top)); }
+    .header { padding-bottom: 4px; }
+    .tab-pane.active { padding-top: 6px; gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    * { scroll-behavior: auto !important; }
 }
 
-.weight-cell-date {
-    font-size: 10px;
-    color: var(--text-secondary);
+.text-action { border: 0; background: none; color: var(--accent-primary); min-height: 32px; padding: 4px 0; font-size: 12px; }
+.weight-overview { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.weight-current { font-size: 36px; line-height: 1.2; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+#weight-current-unit { font-size: 14px; color: var(--text-secondary); letter-spacing: 0; }
+.weight-scale-controls { display: flex; gap: 10px; align-items: center; flex-shrink: 0; color: var(--text-secondary); font-size: 12px; }
+.weight-scale-controls input { width: 76px; min-width: 0; height: 32px; padding: 4px 6px; background: none; border: 1px solid var(--border-color); color: var(--text-primary); font-size: 16px; font-variant-numeric: tabular-nums; }
+#btn-weight-scale-reset { margin-left: auto; }
+.lift-title-row { display: flex; align-items: center; justify-content: space-between; }
+.lift-attendance-card { display: flex; flex-direction: column; flex: 1; min-height: 0; -webkit-touch-callout: none; user-select: none; }
+.lift-attendance-grid { flex: 1; min-height: 0; margin: 12px 0; grid-template-rows: auto; grid-auto-rows: minmax(0, 1fr); }
+.lift-attendance-day, .lift-attendance-blank { aspect-ratio: auto; min-height: 0; }
+.lift-attendance-kind { font-size: clamp(6px, 1.8vw, 9px); overflow-wrap: anywhere; }
+.lift-attendance-day.chest.back { background: linear-gradient(135deg, #785550 50%, #53677b 50%); }
+.lift-attendance-day.back.leg { background: linear-gradient(135deg, #53677b 50%, #526d5c 50%); }
+.lift-attendance-day.leg.chest { background: linear-gradient(135deg, #526d5c 50%, #785550 50%); }
+.cycle-option { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; padding: 8px 0; }
+.cycle-option input { margin-top: 4px; }
+#tab-progress { gap: 14px; }
+.progress-gallery { flex: 1; min-height: 0; overflow-y: auto; }
+@media (max-height: 560px) {
+    .app-container { padding-top: max(4px, env(safe-area-inset-top)); padding-bottom: calc(46px + env(safe-area-inset-bottom)); }
+    .nav-tab { height: 40px; }
+    .date-titles h1 { font-size: 18px; }
+    .header { padding-bottom: 0; }
+    .date-titles .date { margin-top: 0; font-size: 10px; }
+    .meter-in .meter-val { font-size: 30px; }
+    .daily-goal { min-height: 0; }
+    .daily-goal .metric-value { font-size: 24px; }
+    .burn-summary { margin-top: 3px; }
+    .progress-header { margin-bottom: 2px; }
+    .chart-section { height: 70px; }
+    #tab-calories { gap: 4px; }
+    #tab-weight { gap: 6px; }
+    .weight-current { font-size: 28px; }
+    .weight-metrics .metric-value { font-size: 18px; }
 }
-
-.weight-cell-val {
-    font-size: 18px;
-    font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
+@media (max-height: 440px) {
+    .app-container { padding-top: 2px; padding-bottom: calc(38px + env(safe-area-inset-bottom)); }
+    .nav-tab { height: 34px; }
+    .nav-btn, #btn-settings { height: 32px; }
+    .date-titles h1 { font-size: 16px; }
+    #tab-calories { padding-top: 4px; gap: 3px; }
+    .meter-in .meter-val { font-size: 24px; }
+    .daily-goal .metric-value { font-size: 20px; }
+    .chart-section { height: 48px; padding-top: 2px; }
+    .chart-heading { margin-bottom: 2px; }
+    .ai-food-bar { min-height: 34px; }
+    .ai-food-bar input { padding: 4px 0; }
+    .ai-food-bar button { height: 32px; }
+    .hwheel { height: 28px; }
+    #weight-chart-section { min-height: 60px; }
+    .weight-current { font-size: 24px; }
 }
+body.keyboard-open .chips-section { display: none; }
+body.keyboard-open .header { padding-bottom: 0; }
+body.keyboard-open .meter-in .meter-val { font-size: 28px; }
+body.keyboard-open .daily-goal { min-height: 0; }
+body.keyboard-open .daily-goal .metric-value { font-size: 22px; }
+body.keyboard-open .chart-section { height: 56px; }
+body.keyboard-open #tab-calories { gap: 4px; padding-top: 4px; }
 
-.weight-cell.filled .weight-cell-val {
-    color: var(--text-primary);
-}
-
-.weight-cell.today {
-    border-color: var(--accent-primary);
-}
-
-.weight-cell.today .weight-cell-date {
-    color: var(--text-primary);
-}
-
-/* Future days: visible for context but not loggable. */
-.weight-cell.future {
-    opacity: 0.4;
-    cursor: default;
+/* A separate number can follow the finger outside the horizontal scroll clip. */
+.hwheel-drag-number {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 72px;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    z-index: 30;
     pointer-events: none;
-}
-
-/* The day currently being viewed (driven by the header arrows / calendar). */
-.weight-cell.viewing {
-    border-color: var(--accent-primary);
-    background: var(--surface-hover);
-}
-
-.weight-cell.viewing .weight-cell-date {
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-primary);
+    transform: translate3d(-50%, var(--swipe-offset, 0px), 0);
+    transition: transform 180ms ease-out;
 }
-
-/* Tutorial Overlay */
-#tutorial-overlay {
-    z-index: 200;
-}
-
-.tutorial-content {
-    background: var(--surface-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-lg);
-    padding: 28px 24px;
-    max-width: 360px;
-    width: 100%;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
-}
-
-.tutorial-content h2 {
-    font-size: 18px;
-    font-weight: var(--font-weight-light);
-}
-
-/* App container bottom padding clears the fixed bottom nav (which carries its own
-   safe-area inset). The page stays locked; only .log-list scrolls. */
-.app-container {
-    padding-bottom: 104px;
-    overflow: hidden;
-    max-height: 100vh;
-}
-
-.tabs-container {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-}
-
-/* Flat-surface pass: cards read as one quiet tone against the page instead of
-   light-gray outlined boxes. Inputs and selected controls retain their focus
-   treatment so the app stays operable. */
-.chart-section,
-.progress-bar-container,
-.meter-box,
-.log-box,
-.modal-content,
-#tab-progress .progress-headline,
-#tab-progress .progress-composer,
-#tab-progress .progress-upload-btn,
-#tab-progress .progress-photo-item,
-.chart-toggles,
-.chart-toggle.active,
-.weight-cell,
-.tutorial-content {
-    border-color: transparent;
-    box-shadow: none;
-}
-
-.log-box-in,
-.log-box-out,
-#tab-progress .progress-composer {
-    background: var(--surface-color);
-}
-
-.bottom-nav {
-    border-top: 0;
-    padding-top: 12px;
-    padding-bottom: max(28px, calc(env(safe-area-inset-bottom) + 12px));
+.hwheel.is-swiping .hwheel-drag-number { transition: none; will-change: transform; }
+@media (prefers-reduced-motion: reduce) {
+    .hwheel-drag-number { transition: none; }
 }

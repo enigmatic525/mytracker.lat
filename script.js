@@ -1,11 +1,16 @@
 // ===== Pre-app setup (runs before the DOMContentLoaded handler) =====
 
-// Surface uncaught JS errors on the page so failures are visible without DevTools.
-window.addEventListener('error', (e) => {
-    const box = document.createElement('pre');
-    box.style.cssText = 'position:fixed;inset:0;z-index:99999;margin:0;background:#191919;color:#ff9972;font:12px/1.5 ui-monospace,monospace;padding:24px;white-space:pre-wrap;overflow:auto';
-    box.textContent = 'JS ERROR\n\n' + ((e.error && e.error.stack) || e.message) + '\n\nat ' + e.filename + ':' + e.lineno + ':' + e.colno;
-    (document.body || document.documentElement).appendChild(box);
+function showTrackerNotice(message, reason = 'error') {
+    const status = document.getElementById('tracker-status');
+    if (!status) return;
+    status.textContent = message;
+    status.hidden = !message;
+    status.dataset.reason = reason;
+}
+
+// Keep a failed operation visible without covering the rest of the tracker.
+window.addEventListener('error', () => {
+    showTrackerNotice('Something went wrong. Reload the page to try again.');
 });
 
 // The service worker was removed; unregister any stale worker and purge its caches
@@ -19,12 +24,11 @@ if ('serviceWorker' in navigator) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // ===== Constants =====
-    const defaultGoal = 2000;       // legacy absolute goal, used only for migration
+    const defaultGoal = 2000;
     const defaultMaintenance = 2500;
-    // Goal is now a signed daily energy balance target (intake − expenditure):
-    // negative = deficit (lose), 0 = maintain, positive = surplus (gain).
-    const defaultGoalBalance = defaultGoal - defaultMaintenance; // −500
-    const GOAL_BALANCE_LIMIT = 1500; // clamp for the goal stepper, ± this
+    // The daily intake goal is independent of maintenance and exercise.
+    const MIN_GOAL = 500;
+    const MAX_GOAL = 10000;
     const MIN_WEIGHT = 1;          // sanity bounds for input validation
     const MAX_WEIGHT = 1500;
     const PROGRESS_MAX_PER_DAY = 6;
@@ -55,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // history maps a date to { in, out }: `in` = calories eaten, `out` = activity
     // burned on top of TDEE. Total expenditure for a day is maintenance + out.
     let state = {
-        goalBalance: defaultGoalBalance,
+        goal: defaultGoal,
         // `maintenance` is the baseline BMR+NEAT used for days before any dated
         // change. `maintenanceHistory` holds dated breakpoints: editing BMR+NEAT
         // while viewing a day writes a breakpoint there, so the change applies from
@@ -68,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // A date is considered a lifting day when its array contains at least one
         // entry. Older detailed entries remain valid and appear as filled days.
         liftHistory: {},
+        liftCycle: 'single',
+        weightAxisSpan: null, // null uses the default automatic Y range
         theme: 'dark',        // 'light' | 'dark'
         unit: 'imperial'      // 'imperial' | 'metric'
     };
@@ -159,25 +165,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function init() {
         loadState();
+        setupViewport();
         updateDateElements();
         updateUI();
         setupEventListeners();
 
-        const tutorialOverlay = document.getElementById('tutorial-overlay');
-        const btnTutorialClose = document.getElementById('btn-tutorial-close');
-        if (tutorialOverlay && btnTutorialClose) {
-            let seen = false;
-            try { seen = !!localStorage.getItem('trackerTutorialSeen'); } catch (e) {}
-            if (!seen) tutorialOverlay.classList.add('active');
-            const closeTutorial = () => {
-                tutorialOverlay.classList.remove('active');
-                try { localStorage.setItem('trackerTutorialSeen', '1'); } catch (e) {}
-            };
-            btnTutorialClose.addEventListener('click', closeTutorial);
-            tutorialOverlay.addEventListener('click', (e) => {
-                if (e.target === tutorialOverlay) closeTutorial();
-            });
-        }
+    }
+
+    function setupViewport() {
+        const sync = () => {
+            const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            if (Number.isFinite(height)) document.documentElement.style.setProperty('--app-height', `${height}px`);
+            document.body.classList.toggle('keyboard-open', Number.isFinite(height) && window.innerHeight - height > 150);
+        };
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', sync);
+        window.addEventListener('resize', sync);
+        sync();
     }
 
     // ===== Date helpers =====
@@ -191,47 +194,72 @@ document.addEventListener('DOMContentLoaded', () => {
         return getDateString(new Date());
     }
 
+    function isValidDateString(value) {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const date = new Date(value + 'T12:00:00');
+        return Number.isFinite(date.getTime()) && getDateString(date) === value;
+    }
+
+    function readStorage(key) {
+        try { return localStorage.getItem(key); } catch (error) {
+            showTrackerNotice("Browser storage is unavailable. Entries won't be saved here.", 'storage');
+            return null;
+        }
+    }
+
     // ===== Persistence =====
     // localStorage is untrusted input: parse defensively and whitelist every field
     // so a corrupt or hand-edited blob can never inject unexpected state.
     function loadState() {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = readStorage(STORAGE_KEY);
         if (saved) {
             try {
                 const p = JSON.parse(saved);
-                const maintenance = typeof p.maintenance === 'number' ? p.maintenance : defaultMaintenance;
-                // Prefer the new signed-balance field; migrate a legacy absolute
-                // `goal` by expressing it relative to maintenance.
-                let goalBalance = defaultGoalBalance;
-                if (typeof p.goalBalance === 'number' && isFinite(p.goalBalance)) {
-                    goalBalance = p.goalBalance;
-                } else if (typeof p.goal === 'number' && isFinite(p.goal)) {
-                    goalBalance = p.goal - maintenance;
-                }
+                if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Invalid saved state');
+                const maintenance = Number.isFinite(p.maintenance)
+                    ? Math.max(500, Math.min(9000, Math.round(p.maintenance))) : defaultMaintenance;
+                const maintenanceHistory = sanitizeMaintenanceMap(p.maintenanceHistory);
+                // Preserve the effective intake target when upgrading a signed
+                // balance goal. Once saved, exercise can no longer move the goal.
+                const latest = Object.keys(maintenanceHistory).filter((key) => key <= currentDateString).sort().pop();
+                const effectiveMaintenance = latest ? maintenanceHistory[latest] : maintenance;
+                const goal = Number.isFinite(p.goal) ? p.goal
+                    : Number.isFinite(p.goalBalance) ? effectiveMaintenance + p.goalBalance : defaultGoal;
                 state = {
-                    goalBalance: Math.max(-GOAL_BALANCE_LIMIT, Math.min(GOAL_BALANCE_LIMIT, goalBalance)),
+                    goal: Math.max(MIN_GOAL, Math.min(MAX_GOAL, Math.round(goal))),
                     maintenance: maintenance,
-                    maintenanceHistory: sanitizeMaintenanceMap(p.maintenanceHistory),
+                    maintenanceHistory,
                     history: sanitizeHistoryMap(p.history),
                     weightHistory: sanitizeNumberMap(p.weightHistory),
                     progressPhotos: sanitizeProgressPhotosMap(p.progressPhotos),
                     liftHistory: sanitizeLiftHistoryMap(p.liftHistory),
+                    liftCycle: p.liftCycle === 'split' ? 'split' : 'single',
+                    weightAxisSpan: Number.isFinite(p.weightAxisSpan) && p.weightAxisSpan >= 0.2 && p.weightAxisSpan <= 6000 ? p.weightAxisSpan : null,
                     theme: p.theme === 'light' ? 'light' : 'dark',
                     unit: p.unit === 'metric' ? 'metric' : 'imperial'
                 };
                 pruneProgressPhotos();
+                if (!Number.isFinite(p.goal) && Number.isFinite(p.goalBalance)) {
+                    // Preserve the exact original before persisting the goal migration.
+                    // If quota prevents a backup, opening an update leaves saved data untouched.
+                    try {
+                        const backupKey = `${STORAGE_KEY}:before-fixed-goal`;
+                        if (!localStorage.getItem(backupKey)) localStorage.setItem(backupKey, saved);
+                        saveState();
+                    } catch (error) { /* An explicit edit can still save the migrated state later. */ }
+                }
             } catch (e) {
                 // Corrupt storage — keep the safe defaults rather than crashing.
             }
         } else {
             // Migrate from the v1 storage format if present.
-            const oldSaved = localStorage.getItem('calorieTrackerState');
+            const oldSaved = readStorage('calorieTrackerState');
             if (oldSaved) {
                 try {
                     const old = JSON.parse(oldSaved);
-                    if (typeof old.goal === 'number') state.goalBalance = old.goal - state.maintenance;
-                    if (old.lastUpdated && typeof old.calories === 'number' && old.calories > 0) {
-                        state.history[old.lastUpdated] = [{ id: nextEntryId(), t: 'in', a: old.calories }];
+                    if (Number.isFinite(old.goal)) state.goal = Math.max(MIN_GOAL, Math.min(MAX_GOAL, Math.round(old.goal)));
+                    if (isValidDateString(old.lastUpdated) && Number.isFinite(old.calories) && old.calories > 0) {
+                        state.history[old.lastUpdated] = [{ id: nextEntryId(), t: 'in', a: Math.min(DAILY_CAL_CAP, Math.round(old.calories)) }];
                     }
                 } catch (e) {}
             }
@@ -245,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const out = {};
         if (obj && typeof obj === 'object') {
             Object.keys(obj).forEach((k) => {
-                if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof obj[k] === 'number' && isFinite(obj[k])) {
+                if (isValidDateString(k) && typeof obj[k] === 'number' && isFinite(obj[k])) {
                     out[k] = Math.max(500, Math.min(9000, Math.round(obj[k])));
                 }
             });
@@ -258,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const out = {};
         if (obj && typeof obj === 'object') {
             Object.keys(obj).forEach((k) => {
-                if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof obj[k] === 'number' && isFinite(obj[k])) {
+                if (isValidDateString(k) && Number.isFinite(obj[k]) && obj[k] >= MIN_WEIGHT && obj[k] <= MAX_WEIGHT) {
                     out[k] = obj[k];
                 }
             });
@@ -271,10 +299,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // two entries) so existing data survives. Fresh ids are assigned on load.
     function sanitizeHistoryMap(obj) {
         const out = {};
-        const pos = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+        const pos = (v) => (Number.isFinite(v) && v > 0 ? Math.min(DAILY_CAL_CAP, Math.round(v)) : 0);
         if (obj && typeof obj === 'object') {
             Object.keys(obj).forEach((k) => {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+                if (!isValidDateString(k)) return;
                 const v = obj[k];
                 const entries = [];
                 if (typeof v === 'number') {
@@ -305,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const out = {};
         if (obj && typeof obj === 'object') {
             Object.keys(obj).forEach((k) => {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !Array.isArray(obj[k])) return;
+                if (!isValidDateString(k) || !Array.isArray(obj[k])) return;
                 const entries = [];
                 obj[k].forEach((e) => {
                     if (!e || typeof e !== 'object') return;
@@ -329,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const groups = new Set(['chest', 'back', 'leg']);
         if (obj && typeof obj === 'object') {
             Object.keys(obj).forEach((day) => {
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Array.isArray(obj[day])) return;
+                if (!isValidDateString(day) || !Array.isArray(obj[day])) return;
                 const lifts = [];
                 obj[day].forEach((value) => {
                     if (!value || typeof value !== 'object' || !groups.has(value.group)) return;
@@ -377,7 +405,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveState() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) {}
+            const status = document.getElementById('tracker-status');
+            if (status && status.dataset.reason === 'storage') showTrackerNotice('');
+            return true;
+        } catch (error) {
+            showTrackerNotice("Changes couldn't be saved. Export a backup in Settings.", 'storage');
+            return false;
+        }
     }
 
     async function exportTrackerBackup() {
@@ -413,8 +447,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===== Theme & units =====
+    function changeUnit(nextUnit) {
+        if (!['metric', 'imperial'].includes(nextUnit) || nextUnit === state.unit) return;
+        const factor = nextUnit === 'metric' ? 0.45359237 : 1 / 0.45359237;
+        // Keep precision in storage; rounding every conversion would slowly
+        // change the recorded weight when switching back and forth.
+        Object.keys(state.weightHistory).forEach((date) => {
+            state.weightHistory[date] *= factor;
+        });
+        Object.values(state.liftHistory).forEach((entries) => {
+            entries.forEach((entry) => { entry.weight *= factor; });
+        });
+        if (Number.isFinite(state.weightAxisSpan)) state.weightAxisSpan *= factor;
+        state.unit = nextUnit;
+    }
+
     function applyThemeAndUnits() {
-        document.body.className = `theme-${state.theme}`;
+        document.body.classList.remove('theme-light', 'theme-dark');
+        document.body.classList.add(`theme-${state.theme}`);
         const metaTheme = document.querySelector('meta[name="theme-color"]');
         if (metaTheme) metaTheme.content = state.theme === 'dark' ? '#191919' : '#ffffff';
 
@@ -423,12 +473,14 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.toggle('active', isActive);
             btn.classList.toggle('btn-primary', isActive);
             btn.classList.toggle('btn-secondary', !isActive);
+            btn.setAttribute('aria-pressed', String(isActive));
         });
         document.querySelectorAll('.unit-toggle').forEach((btn) => {
             const isActive = btn.getAttribute('data-unit') === state.unit;
             btn.classList.toggle('active', isActive);
             btn.classList.toggle('btn-primary', isActive);
             btn.classList.toggle('btn-secondary', !isActive);
+            btn.setAttribute('aria-pressed', String(isActive));
         });
     }
 
@@ -453,12 +505,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const day = dayData(viewingDateString);
         const maint = maintenanceFor(viewingDateString);  // effective BMR+NEAT for this day
         const expenditure = maint + day.out; // TDEE baseline + logged activity
-        // Goal is a signed balance target; the intake that hits it = expenditure +
-        // goalBalance. (Burning more lets you eat more for the same balance.)
-        const targetIn = expenditure + state.goalBalance;
+        const targetIn = state.goal;
 
-        if (metricGoalValEl) metricGoalValEl.textContent = signed(state.goalBalance);
+        if (metricGoalValEl) metricGoalValEl.textContent = targetIn;
+        if (metricGoalEl) metricGoalEl.setAttribute('aria-label', `Daily calorie goal: ${targetIn}. Edit goal.`);
+        const goalLabel = document.getElementById('calorie-goal-label');
+        if (goalLabel) goalLabel.textContent = `Goal ${targetIn} cal`;
         if (metricMaintValEl) metricMaintValEl.textContent = maint;
+        if (metricMaintEl) metricMaintEl.setAttribute('aria-label', `Baseline daily calorie burn: ${maint}. Edit BMR + NEAT.`);
         if (meterInValEl) meterInValEl.textContent = day.in;
         if (meterOutValEl) meterOutValEl.textContent = expenditure;
 
@@ -472,7 +526,13 @@ document.addEventListener('DOMContentLoaded', () => {
         percentage = Math.max(0, Math.min(100, percentage));
         if (progressBarFill) {
             progressBarFill.style.width = `${percentage}%`;
-            progressBarFill.style.background = day.in > targetIn ? 'var(--danger)' : 'var(--accent-primary)';
+            progressBarFill.style.background = day.in > targetIn ? 'var(--danger)' : 'var(--text-primary)';
+        }
+        const progress = document.getElementById('calorie-progress');
+        if (progress) {
+            progress.setAttribute('aria-valuemax', targetIn);
+            progress.setAttribute('aria-valuenow', Math.min(day.in, targetIn));
+            progress.setAttribute('aria-valuetext', `${day.in} of ${targetIn} calories; ${caloriesLeftEl.textContent}`);
         }
 
         updateMeterHints();
@@ -481,19 +541,18 @@ document.addEventListener('DOMContentLoaded', () => {
         renderProgressTab();
     }
 
-    // Formats a signed integer: 0 -> "0", 300 -> "+300", -500 -> "−500".
-    function signed(n) {
-        if (n > 0) return `+${n}`;
-        if (n < 0) return `−${Math.abs(n)}`; // proper minus sign
-        return '0';
-    }
-
     // Shows a faint "+N" on each meter box reflecting what a tap would log, so the
     // slider amount and its destinations stay visually connected.
     function updateMeterHints() {
-        const hint = pendingAmount > 0 ? `+${pendingAmount}` : '';
+        const hint = pendingAmount > 0 ? `Add ${pendingAmount} cal` : '';
         if (meterInHintEl) meterInHintEl.textContent = hint;
         if (meterOutHintEl) meterOutHintEl.textContent = hint;
+        if (pendingWheelScrollEl) pendingWheelScrollEl.setAttribute('aria-valuenow', pendingAmount);
+        const day = dayData(viewingDateString);
+        const action = pendingAmount > 0 ? `Add ${pendingAmount} calories` : 'Select a manual amount below';
+        if (meterInEl) meterInEl.setAttribute('aria-label', `Calories in: ${day.in}. ${action} to food.`);
+        if (meterOutEl) meterOutEl.setAttribute('aria-label', `Calories out: ${maintenanceFor(viewingDateString) + day.out}. ${action} to exercise.`);
+
     }
 
     // Diverging diff chart: each day's bar is the gap between consumption and that
@@ -530,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dStr = getDateString(tempD);
             const day = dayData(dStr);
             const tdee = maintenanceFor(dStr) + day.out;  // cals out (BMR+NEAT + burn)
-            const goalTarget = tdee + state.goalBalance;  // intake that lands on goal
+            const goalTarget = state.goal;               // fixed daily intake target
             const intake = day.in;                        // cals in
             const hasFood = intake > 0;
             const balance = intake - tdee;                // + surplus (green) / − deficit (red)
@@ -574,8 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const outH = pct(item.tdee);
             const goalH = pct(item.goalTarget);
 
-            // Per-day cals-out line (solid) and goal line (dashed) — both ride with
-            // the day's burn, since goalTarget = tdee + goalBalance.
+            // Burn varies by day; the dashed intake goal stays at one fixed level.
             const outTick = document.createElement('div');
             outTick.className = `chart-out-tick${isViewingDay ? ' active' : ''}`;
             outTick.style.bottom = `${outH}%`;
@@ -630,33 +688,79 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Appends an entry of the given type ('in' or 'out') to the viewing day's log.
-    function addEntry(type, amount, label) {
-        if (amount <= 0) return;
+    function addEntry(type, amount, label, dateStr = viewingDateString) {
+        if (!Number.isFinite(amount) || amount <= 0 || !isValidDateString(dateStr)) return 0;
+        const status = document.getElementById('tracker-status');
+        if (status && status.dataset.reason === 'entry') showTrackerNotice('');
+        amount = Math.round(amount);
+        if (amount === 0) return 0;
         const t = type === 'out' ? 'out' : 'in';
         // Clamp to the room left under the day's per-type cap. If the day is already
         // at the cap, drop the entry and just reset the slider — nothing to log.
-        const current = t === 'out' ? dayData(viewingDateString).out : dayData(viewingDateString).in;
+        const current = t === 'out' ? dayData(dateStr).out : dayData(dateStr).in;
         const room = DAILY_CAL_CAP - current;
         if (room <= 0) {
             setPendingAmount(0);
-            return;
+            if (!label) showTrackerNotice('Daily calorie limit reached. No entry added.', 'entry');
+            return 0;
         }
-        const entries = getEntries(viewingDateString).slice();
+        const entries = getEntries(dateStr).slice();
         const entry = { id: nextEntryId(), t: t, a: Math.min(room, amount) };
         if (typeof label === 'string' && label.trim()) entry.label = label.trim().slice(0, 80);
         entries.push(entry);
-        state.history[viewingDateString] = entries;
+        state.history[dateStr] = entries;
 
-        // Pulse the meter that just changed for tactile feedback.
-        const valEl = t === 'out' ? meterOutValEl : meterInValEl;
-        if (valEl) {
-            valEl.style.transform = 'scale(1.15)';
-            setTimeout(() => { valEl.style.transform = 'scale(1)'; }, 150);
-        }
-
-        saveState();
+        const saved = saveState();
         setPendingAmount(0); // reset the slider so the same tap can't double-log
         updateUI();
+        if (!label && saved && entry.a < amount) {
+            showTrackerNotice(`Added ${entry.a} of ${amount} calories; daily limit reached.`, 'entry');
+        }
+        return entry.a;
+    }
+
+    // Round item rows together, so their integers still add up to the estimate.
+    function estimateRows(result, fallbackLabel) {
+        if (!Array.isArray(result.breakdown) || !result.breakdown.length) {
+            return [{ label: fallbackLabel, calories: result.calories }];
+        }
+        if (result.breakdown.length > 20) throw new Error('Too many items in the estimate');
+        const rows = result.breakdown.map((item) => {
+            if (!item || typeof item.label !== 'string' || !item.label.trim() || !Number.isFinite(item.calories) || item.calories < 0) {
+                throw new Error('Invalid item in the estimate');
+            }
+            return { label: item.label.trim().slice(0, 80), calories: item.calories };
+        });
+        const total = rows.reduce((sum, row) => sum + row.calories, 0);
+        if (Math.abs(total - result.calories) > 0.6) throw new Error('Item calories do not match the estimate');
+        const rounded = rows.map((row) => ({ ...row, calories: Math.floor(row.calories) }));
+        const order = rows.map((row, index) => ({ index, fraction: row.calories - Math.floor(row.calories) }))
+            .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+        let remainder = result.calories - rounded.reduce((sum, row) => sum + row.calories, 0);
+        if (remainder < 0 || remainder > rows.length) throw new Error('Invalid item calorie total');
+        for (let i = 0; i < remainder; i++) rounded[order[i].index].calories += 1;
+        return rounded;
+    }
+
+    function addEstimatedEntries(result, label, dateStr) {
+        const type = result.category === 'exercise' ? 'out' : 'in';
+        const rows = estimateRows(result, label);
+        let room = Math.max(0, DAILY_CAL_CAP - dayData(dateStr)[type]);
+        const entries = [];
+        for (const row of rows) {
+            const amount = Math.min(room, row.calories);
+            if (amount > 0) entries.push({ id: nextEntryId(), t: type, a: amount, label: row.label });
+            room -= amount;
+        }
+        const added = entries.reduce((sum, entry) => sum + entry.a, 0);
+        if (entries.length) {
+            // The log shows newest first; preserve the order of a single AI list.
+            state.history[dateStr] = getEntries(dateStr).concat(entries.reverse());
+            saveState();
+            setPendingAmount(0);
+            updateUI();
+        }
+        return added;
     }
 
     // Removes one logged entry by id from the viewing day.
@@ -818,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         allEntries.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
-        progressHeadlineEl.textContent = 'Browse all progress photos';
+        progressHeadlineEl.textContent = allEntries.length ? `${allEntries.length} photo${allEntries.length === 1 ? '' : 's'}` : '';
 
         progressGalleryEl.innerHTML = '';
         if (!allEntries.length) {
@@ -877,19 +981,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const files = Array.from(fileList).filter((f) => typeof f?.type === 'string' && f.type.startsWith('image/'));
         if (!files.length) return;
+        const entryDate = viewingDateString;
         progressPhotoInputEl.disabled = true;
-
+        let added = 0;
+        let failed = 0;
         try {
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const dataUrl = await compressImageToDataUrl(file);
-                addProgressPhoto(viewingDateString, dataUrl);
+            for (const file of files) {
+                try {
+                    const dataUrl = await compressImageToDataUrl(file);
+                    addProgressPhoto(entryDate, dataUrl);
+                    added += 1;
+                } catch (error) {
+                    failed += 1;
+                }
             }
-            saveState();
+            const saved = added ? saveState() : true;
             renderProgressTab();
+            if (failed && saved) {
+                showTrackerNotice(`${added ? `${added} photo${added === 1 ? '' : 's'} added. ` : ''}${failed} could not be opened. Try a different image.`, 'photos');
+            } else if (saved) {
+                const status = document.getElementById('tracker-status');
+                if (status && status.dataset.reason === 'photos') showTrackerNotice('');
+            }
             progressPhotoInputEl.value = '';
-        } catch (err) {
-            console.error('Could not process one or more images.', err);
         } finally {
             progressPhotoInputEl.disabled = false;
         }
@@ -940,21 +1054,133 @@ document.addEventListener('DOMContentLoaded', () => {
         updateMeterHints();
     }
 
+    function setupManualSwipes() {
+        const wheel = document.getElementById('pending-wheel');
+        if (!wheel || !pendingWheelScrollEl) return;
+        const movingNumber = document.createElement('div');
+        movingNumber.className = 'hwheel-drag-number';
+        movingNumber.setAttribute('aria-hidden', 'true');
+        movingNumber.hidden = true;
+        wheel.appendChild(movingNumber);
+        let gesture = null;
+        let suppressClick = false;
+        let suppressClickTimer = null;
+        let settleTimer = null;
+        const hiddenItems = new Map();
+        const clearVisual = () => {
+            clearTimeout(settleTimer);
+            settleTimer = null;
+            movingNumber.hidden = true;
+            movingNumber.style.setProperty('--swipe-offset', '0px');
+            hiddenItems.forEach((visibility, item) => { item.style.visibility = visibility; });
+            hiddenItems.clear();
+        };
+        const hideSelected = () => {
+            const item = pendingWheelScrollEl.children[pendingSelectedIdx];
+            if (!item || hiddenItems.has(item)) return;
+            hiddenItems.set(item, item.style.visibility || '');
+            item.style.visibility = 'hidden';
+        };
+        const reset = (animate = false) => {
+            gesture = null;
+            wheel.classList.remove('is-swiping');
+            if (animate && !movingNumber.hidden) {
+                movingNumber.style.setProperty('--swipe-offset', '0px');
+                settleTimer = setTimeout(clearVisual, 180);
+            } else clearVisual();
+        };
+        wheel.addEventListener('pointerdown', (event) => {
+            reset();
+            clearTimeout(suppressClickTimer);
+            suppressClick = false;
+            if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
+            // Read the actual wheel position in case its last scroll frame is pending.
+            const index = Math.max(0, Math.min(PENDING_MAX / PENDING_STEP,
+                Math.round(pendingWheelScrollEl.scrollLeft / PENDING_ITEM_W)));
+            const amount = index * PENDING_STEP;
+            if (!amount) return;
+            pendingAmount = amount;
+            markPendingSelected(index);
+            updateMeterHints();
+            gesture = { id: event.pointerId, x: event.clientX, y: event.clientY,
+                amount, date: viewingDateString, intent: null };
+        });
+        wheel.addEventListener('pointermove', (event) => {
+            if (!gesture || event.pointerId !== gesture.id) return;
+            const dx = event.clientX - gesture.x;
+            const dy = event.clientY - gesture.y;
+            if (!gesture.intent && Math.max(Math.abs(dx), Math.abs(dy)) >= 10) {
+                if (Math.abs(dy) > Math.abs(dx) * 1.3) {
+                    gesture.intent = 'vertical';
+                    if (typeof wheel.setPointerCapture === 'function') wheel.setPointerCapture(event.pointerId);
+                } else if (Math.abs(dx) >= Math.abs(dy)) gesture.intent = 'horizontal';
+            }
+            if (gesture.intent !== 'vertical') return;
+            event.preventDefault();
+            if (movingNumber.hidden) {
+                movingNumber.textContent = gesture.amount;
+                movingNumber.hidden = false;
+                wheel.classList.add('is-swiping');
+                hideSelected();
+            }
+            // No easing while held: one pixel of finger travel moves one pixel of text.
+            movingNumber.style.setProperty('--swipe-offset', `${dy}px`);
+        }, { passive: false });
+        wheel.addEventListener('pointerup', (event) => {
+            if (!gesture || event.pointerId !== gesture.id) return;
+            const entry = gesture;
+            const dx = event.clientX - entry.x;
+            const dy = event.clientY - entry.y;
+            const commit = entry.intent !== 'horizontal' && Math.abs(dy) >= 32 && Math.abs(dy) > Math.abs(dx) * 1.3;
+            reset(true);
+            if (!commit) return;
+            event.preventDefault();
+            suppressClick = true;
+            suppressClickTimer = setTimeout(() => { suppressClick = false; }, 350);
+            addEntry(dy < 0 ? 'in' : 'out', entry.amount, undefined, entry.date);
+            if (!movingNumber.hidden) hideSelected();
+        });
+        const cancel = () => { if (gesture) reset(true); };
+        wheel.addEventListener('pointercancel', cancel);
+        wheel.addEventListener('lostpointercapture', cancel);
+        wheel.addEventListener('keydown', clearVisual);
+        // A release click must not select the old item after logging reset the wheel.
+        wheel.addEventListener('click', (event) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+        }, true);
+    }
+
     // ===== Navigation between days / dates =====
+    function clearEntryFeedback() {
+        const status = document.getElementById('tracker-status');
+        if (status && status.dataset.reason === 'entry') showTrackerNotice('');
+        if (aiFoodStatusEl && aiFoodFormEl && aiFoodFormEl.getAttribute('aria-busy') !== 'true') {
+            aiFoodStatusEl.hidden = true;
+            const details = document.getElementById('ai-estimate-details');
+            if (details) details.hidden = true;
+        }
+    }
+
     function shiftDay(delta) {
         const d = new Date(viewingDateString + 'T12:00:00');
         d.setDate(d.getDate() + delta);
         const next = getDateString(d);
         if (next > currentDateString) return; // never navigate into the future
         viewingDateString = next;
+        clearEntryFeedback();
         updateDateElements();
         refreshActiveView();
     }
 
     function jumpToDate(dateStr) {
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+        if (!isValidDateString(dateStr)) return;
         if (dateStr > currentDateString) dateStr = currentDateString;
         viewingDateString = dateStr;
+        clearEntryFeedback();
         updateDateElements();
         refreshActiveView();
     }
@@ -1060,7 +1286,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLiftsTab() {
         if (!liftAttendanceGridEl || !liftMonthLabelEl || !liftWeekCountEl) return;
-        const today = new Date(currentDateString + 'T12:00:00');
+        const today = new Date(viewingDateString + 'T12:00:00');
         const year = today.getFullYear();
         const month = today.getMonth();
         const firstDay = new Date(year, month, 1, 12);
@@ -1086,14 +1312,20 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let dateNumber = 1; dateNumber <= daysInMonth; dateNumber += 1) {
             const date = new Date(year, month, dateNumber, 12);
             const day = getDateString(date);
-            const group = Array.isArray(state.liftHistory[day]) ? state.liftHistory[day][0]?.group : null;
-            const completed = group === 'chest' || group === 'back' || group === 'leg';
-            const status = completed ? group : 'no lift';
+            const groups = liftGroupsFor(day);
+            const completed = groups.length > 0;
+            const status = completed ? groups.map(liftGroupLabel).join(' / ') : 'no lift';
             const label = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
             const cell = document.createElement('button');
             cell.type = 'button';
-            cell.className = `lift-attendance-day${completed ? ` ${group}` : ''}${day === currentDateString ? ' today' : ''}`;
+            cell.className = `lift-attendance-day${completed ? ` ${groups.join(' ')}${groups.length > 1 ? ' split' : ''}` : ''}${day === currentDateString ? ' today' : ''}`;
             cell.textContent = String(dateNumber);
+            if (completed) {
+                const kind = document.createElement('span');
+                kind.className = 'lift-attendance-kind';
+                kind.textContent = groups.map(liftGroupLabel).join('/');
+                cell.appendChild(kind);
+            }
             cell.title = `${label}: ${status}${day === currentDateString ? ' (today)' : ''}`;
             cell.setAttribute('aria-label', `${label}${day === currentDateString ? ', today' : ''}, ${status}`);
             cell.setAttribute('aria-pressed', completed ? 'true' : 'false');
@@ -1101,35 +1333,88 @@ document.addEventListener('DOMContentLoaded', () => {
             liftAttendanceGridEl.appendChild(cell);
         }
 
-        const week = liftWeekFor(currentDateString);
+        const week = liftWeekFor(viewingDateString);
         const completedThisWeek = Object.keys(state.liftHistory).filter((day) => (
             day >= week.start && day <= week.end && Array.isArray(state.liftHistory[day]) && state.liftHistory[day].length > 0
         )).length;
         liftWeekCountEl.textContent = `${completedThisWeek}/7`;
+        const hint = document.getElementById('lift-cycle-hint');
+        if (hint) hint.textContent = state.liftCycle === 'split' ? 'Chest/Back → Back/Legs → Legs/Chest → Clear. Hold to change.' : 'Chest → Back → Legs → Clear. Hold to change.';
     }
 
-    function cycleLiftDay(day) {
-        const currentGroup = Array.isArray(state.liftHistory[day]) ? state.liftHistory[day][0]?.group : null;
-        const nextGroup = currentGroup === 'chest' ? 'back'
-            : currentGroup === 'back' ? 'leg'
-                : currentGroup === 'leg' ? null : 'chest';
+    function liftGroupsFor(day) {
+        return [...new Set((state.liftHistory[day] || []).map((entry) => entry.group))]
+            .filter((group) => ['chest', 'back', 'leg'].includes(group));
+    }
+    function liftGroupLabel(group) { return group === 'leg' ? 'Legs' : group === 'back' ? 'Back' : 'Chest'; }
 
-        if (!nextGroup) {
-            delete state.liftHistory[day];
-        } else {
-            // Keep the established backup schema while the UI records attendance
-            // and the selected workout color.
-            state.liftHistory[day] = [{
-                id: nextEntryId(),
-                group: nextGroup,
-                exercise: 'Workout',
-                sets: 1,
-                reps: 1,
-                weight: 0
-            }];
-        }
+    function cycleLiftDay(day) {
+        const cycle = state.liftCycle === 'split'
+            ? [['chest', 'back'], ['back', 'leg'], ['leg', 'chest']]
+            : [['chest'], ['back'], ['leg']];
+        const key = (groups) => groups.slice().sort().join('+');
+        const index = cycle.findIndex((groups) => key(groups) === key(liftGroupsFor(day)));
+        const next = index === cycle.length - 1 ? null : cycle[index + 1];
+        if (!next) delete state.liftHistory[day];
+        else state.liftHistory[day] = next.map((group) => ({
+            id: nextEntryId(), group, exercise: 'Workout', sets: 1, reps: 1, weight: 0
+        }));
         saveState();
         renderLiftsTab();
+    }
+
+    function setLiftCycle(mode) {
+        state.liftCycle = mode === 'split' ? 'split' : 'single';
+        saveState();
+        renderLiftsTab();
+    }
+
+    function setupLiftControls() {
+        const card = document.getElementById('lift-attendance-card');
+        const modal = document.getElementById('lift-cycle-modal');
+        if (!card || !modal) return;
+        const choices = Array.from(document.querySelectorAll('input[name="lift-cycle"]'));
+        const open = () => {
+            choices.forEach((input) => { input.checked = input.value === state.liftCycle; });
+            modal.classList.add('active');
+        };
+        document.getElementById('btn-lift-cycle').addEventListener('click', open);
+        document.getElementById('btn-cancel-lift-cycle').addEventListener('click', () => modal.classList.remove('active'));
+        document.getElementById('btn-save-lift-cycle').addEventListener('click', () => {
+            const selected = choices.find((input) => input.checked);
+            if (selected) setLiftCycle(selected.value);
+            modal.classList.remove('active');
+        });
+        let timer = null;
+        let held = false;
+        let origin = null;
+        const cancel = () => { clearTimeout(timer); timer = null; };
+        card.addEventListener('pointerdown', (event) => {
+            if (event.button !== undefined && event.button !== 0) return;
+            if (event.isPrimary === false) return;
+            cancel();
+            held = false;
+            origin = { x: event.clientX, y: event.clientY };
+            timer = setTimeout(() => { held = true; open(); }, 550);
+        });
+        card.addEventListener('pointermove', (event) => {
+            if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) cancel();
+        });
+        card.addEventListener('pointerup', () => {
+            cancel(); origin = null;
+            setTimeout(() => { held = false; }, 100);
+        });
+        card.addEventListener('pointercancel', () => { cancel(); held = false; origin = null; });
+        card.addEventListener('pointerleave', cancel);
+        card.addEventListener('click', (event) => {
+            if (held) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+                held = false;
+            }
+        }, true);
+        card.addEventListener('contextmenu', (event) => { event.preventDefault(); cancel(); held = true; open(); });
     }
 
     // ===== Weight tab =====
@@ -1239,6 +1524,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function weightAxisBounds(min, max, customSpan = null) {
+        const padding = Math.max((max - min) * 0.2, 1);
+        const span = Number.isFinite(customSpan) && customSpan >= 0.2 ? customSpan : (max - min + padding * 2) * 2;
+        const lower = Math.max(0, (min + max) / 2 - span / 2);
+        return { min: lower, max: lower + span };
+    }
+
+    function setWeightAxisSpan(value) {
+        if (value !== null && (!Number.isFinite(value) || value < 0.2 || value > 6000)) return false;
+        state.weightAxisSpan = value;
+        saveState();
+        renderWeightTab();
+        return true;
+    }
+
     function renderWeightTab() {
         const svgEl = document.getElementById('weight-chart-svg');
         if (!svgEl) return;
@@ -1254,6 +1554,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const summaryEl = document.getElementById('weight-projection-summary');
         const maintSummaryEl = document.getElementById('weight-maint-summary');
         const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
+        const latestDate = Object.keys(state.weightHistory).filter((date) => date <= viewingDateString).sort().pop();
+        const value = document.getElementById('weight-current-value');
+        const label = document.getElementById('weight-current-label');
+        if (value) value.textContent = latestDate ? state.weightHistory[latestDate].toFixed(1) : '—';
+        if (label) label.textContent = latestDate === viewingDateString ? 'Logged weight' : latestDate ? `Last logged · ${new Date(latestDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'No weight logged';
+        const unit = document.getElementById('weight-current-unit');
+        if (unit) unit.textContent = unitName;
+        const logButton = document.getElementById('btn-weight-log');
+        if (logButton) logButton.textContent = latestDate === viewingDateString ? 'Edit weight' : 'Log weight';
+        const axisUnit = document.getElementById('weight-axis-unit');
+        if (axisUnit) axisUnit.textContent = unitName;
+
 
         const daysMap = { week: 7, month: 30, year: 365 };
         const days = daysMap[currentWeightRange] || 30;
@@ -1327,13 +1639,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (maintSummaryEl) {
             const m = computeMaintenanceEstimate();
             if (m) {
-                const absDelta = Math.abs(m.delta);
-                if (absDelta < 75) {
-                    maintSummaryEl.textContent = `Dashed = weight predicted from intake. Your last ${m.nDays} logged days imply maintenance ≈ ${m.est} cal — close to your ${m.current}. ✓`;
-                } else {
-                    const dir = m.delta > 0 ? 'higher' : 'lower';
-                    maintSummaryEl.textContent = `Dashed = weight predicted from intake. Your last ${m.nDays} logged days imply maintenance ≈ ${m.est} cal — ${absDelta} ${dir} than your ${m.current}.`;
-                }
+                maintSummaryEl.textContent = `Estimated baseline: ${m.est} cal/day from ${m.nDays} logged days. Current: ${m.current}. Dashed line: predicted weight.`;
                 maintSummaryEl.style.display = '';
             } else {
                 maintSummaryEl.style.display = 'none';
@@ -1352,6 +1658,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dataPoints.length < 2) {
             pathLine.setAttribute('d', '');
             if (emptyEl) emptyEl.style.display = 'flex';
+            const scaleInput = document.getElementById('weight-axis-span');
+            if (scaleInput) {
+                scaleInput.value = state.weightAxisSpan === null ? '' : state.weightAxisSpan;
+                scaleInput.placeholder = 'Auto';
+            }
             currentSvgPts = [];
             return;
         }
@@ -1375,10 +1686,12 @@ document.addEventListener('DOMContentLoaded', () => {
             maxW = Math.max(maxW, ...shouldBe.map((s) => s.weight));
             minW = Math.min(minW, ...shouldBe.map((s) => s.weight));
         }
-        const yPad = Math.max((maxW - minW) * 0.2, 1);
-        maxW += yPad;
-        minW -= yPad;
+        const bounds = weightAxisBounds(minW, maxW, state.weightAxisSpan);
+        minW = bounds.min;
+        maxW = bounds.max;
         const yRange = maxW - minW;
+        const scaleInput = document.getElementById('weight-axis-span');
+        if (scaleInput && document.activeElement !== scaleInput) scaleInput.value = Math.round(yRange * 10) / 10;
 
         // Y-axis: 4 ticks, positioned by exact % so they line up with the SVG.
         if (yAxisEl) {
@@ -1491,7 +1804,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dateStr === currentDateString) cell.classList.add('today');
         if (dateStr === viewingDateString) cell.classList.add('viewing');
         // Future days are shown but greyed out — you can't log a weight that hasn't happened.
-        if (dateStr > currentDateString) cell.classList.add('future');
+        if (dateStr > currentDateString) {
+            cell.classList.add('future');
+            cell.disabled = true;
+        }
         const w = state.weightHistory[dateStr];
         if (typeof w === 'number') cell.classList.add('filled');
 
@@ -1595,6 +1911,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const w = state.weightHistory[cell.dataset.date];
             cell.classList.toggle('filled', typeof w === 'number');
             cell.classList.toggle('viewing', cell.dataset.date === viewingDateString);
+            cell.classList.toggle('today', cell.dataset.date === currentDateString);
+            cell.classList.toggle('future', cell.dataset.date > currentDateString);
+            cell.disabled = cell.dataset.date > currentDateString;
             const valLbl = cell.querySelector('.weight-cell-val');
             if (valLbl) valLbl.textContent = typeof w === 'number' ? w.toFixed(1) : '+';
         });
@@ -1678,6 +1997,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pickerSelectedIdx >= 0 && rows[pickerSelectedIdx]) rows[pickerSelectedIdx].classList.remove('selected');
         if (rows[idx]) rows[idx].classList.add('selected');
         pickerSelectedIdx = idx;
+        scrollEl.setAttribute('aria-valuenow', pickerValues[idx]);
+        scrollEl.setAttribute('aria-valuetext', `${pickerValues[idx].toFixed(1)} ${state.unit === 'metric' ? 'kg' : 'lb'}`);
+        const input = document.getElementById('weight-value-input');
+        if (input) {
+            input.value = pickerValues[idx].toFixed(1);
+            input.dataset.edited = 'false';
+        }
     }
 
     // Opens the weight-entry modal for a given day. The wheel seeds on the day's
@@ -1701,6 +2027,17 @@ document.addEventListener('DOMContentLoaded', () => {
             ? existing
             : (nearestPriorWeight(dateStr) ?? (state.unit === 'metric' ? 70 : 150));
         const centerIdx = buildWeightPicker(Math.round(seed * 10) / 10);
+        const input = document.getElementById('weight-value-input');
+        if (input) {
+            input.value = seed.toFixed(1);
+            input.setAttribute('aria-label', `Weight in ${state.unit === 'metric' ? 'kilograms' : 'pounds'}`);
+            input.min = MIN_WEIGHT;
+            input.max = MAX_WEIGHT;
+            input.dataset.edited = 'false';
+            if (typeof input.setCustomValidity === 'function') input.setCustomValidity('');
+        }
+        scrollEl.setAttribute('aria-valuemin', pickerValues[0]);
+        scrollEl.setAttribute('aria-valuemax', pickerValues[pickerValues.length - 1]);
 
         // Only offer "remove" when there's an entry to remove.
         if (clearBtn) clearBtn.style.display = typeof existing === 'number' ? 'block' : 'none';
@@ -1717,6 +2054,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== Event wiring =====
     function setupEventListeners() {
+        // A pinned tab may stay open overnight. Follow the new day only when
+        // the user was viewing today; preserve a deliberately selected past day.
+        function syncToday() {
+            const today = getTodayDateString();
+            if (today === currentDateString) return;
+            if (viewingDateString === currentDateString) viewingDateString = today;
+            currentDateString = today;
+            updateDateElements();
+            refreshWeightSheet();
+            refreshActiveView();
+        }
+        window.addEventListener('focus', syncToday);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) syncToday();
+        });
         // Day navigation
         btnPrevDay.addEventListener('click', () => shiftDay(-1));
         btnNextDay.addEventListener('click', () => { if (!btnNextDay.disabled) shiftDay(1); });
@@ -1752,6 +2104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Tapping a meter box logs the pending amount to that meter.
         if (meterInEl) meterInEl.addEventListener('click', () => addEntry('in', pendingAmount));
         if (meterOutEl) meterOutEl.addEventListener('click', () => addEntry('out', pendingAmount));
+        setupManualSwipes();
 
         // Natural-language calorie entry. The server owns the OpenAI credential,
         // classifies food vs. exercise, and returns a compact estimate.
@@ -1760,29 +2113,40 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!aiFoodStatusEl) return;
             aiFoodStatusEl.textContent = message;
             aiFoodStatusEl.classList.toggle('error', type === 'error');
-            aiFoodStatusEl.classList.toggle('success', type === 'success');
             aiFoodStatusEl.hidden = !message;
+            const details = document.getElementById('ai-estimate-details');
+            if (details) { details.hidden = true; details.open = false; }
         }
 
         async function submitAiFoodEntry() {
             if (isAiSubmitting) return;
             const entry = aiFoodInputEl ? aiFoodInputEl.value.trim() : '';
             if (!entry || !aiFoodSubmitEl) return;
+            const entryDate = viewingDateString;
+            const weightDates = Object.keys(state.weightHistory).filter((date) => date <= entryDate).sort();
+            const weight = state.weightHistory[weightDates[weightDates.length - 1]];
+            const convertedWeight = Number.isFinite(weight) ? weight * (state.unit === 'metric' ? 1 : 0.45359237) : NaN;
+            const weightKg = convertedWeight >= 1 && convertedWeight <= 680 ? convertedWeight : undefined;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 35000);
 
             isAiSubmitting = true;
             aiFoodSubmitEl.disabled = true;
+            aiFoodSubmitEl.textContent = 'Adding…';
             if (aiFoodInputEl) aiFoodInputEl.disabled = true;
+            if (aiFoodFormEl) aiFoodFormEl.setAttribute('aria-busy', 'true');
             setAiFoodStatus('Estimating calories…');
 
             try {
                 const response = await fetch(AI_API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ entry: entry })
+                    body: JSON.stringify({ entry, weightKg }),
+                    signal: controller.signal
                 });
                 const result = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(result.error || 'Could not estimate calories');
-                if (!Number.isInteger(result.calories) || result.calories <= 0) {
+                if (!Number.isInteger(result.calories) || result.calories < 0 || result.calories > DAILY_CAL_CAP) {
                     throw new Error('No calorie estimate returned');
                 }
 
@@ -1790,15 +2154,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     result.category === 'food' ? 'in' : '';
                 if (!entryType) throw new Error('No entry category returned');
 
-                addEntry(entryType, result.calories, result.label || entry);
+                const label = typeof result.label === 'string' && result.label.trim() ? result.label.trim() : entry;
+                const added = result.calories > 0 ? addEstimatedEntries(result, label, entryDate) : 0;
+                if (result.calories > 0 && !added) {
+                    throw new Error('Daily 10,000-calorie limit reached. No entry added.');
+                }
                 if (aiFoodInputEl) aiFoodInputEl.value = '';
-                setAiFoodStatus(`Added ${result.label || entry}: ${result.calories} calories.`, 'success');
+                const assumptions = Array.isArray(result.assumptions)
+                    ? result.assumptions.filter((value) => typeof value === 'string').join(' ') : '';
+                // Successful entries are visible in their columns, without a second receipt.
+                const message = result.calories === 0 ? `${label}: 0 calories.`
+                    : added < result.calories ? `Daily limit: only ${added} of ${result.calories} calories were logged.` : '';
+                setAiFoodStatus(message, added < result.calories ? 'error' : 'success');
+                const notes = document.getElementById('ai-estimate-notes');
+                const details = document.getElementById('ai-estimate-details');
+                if (notes && details) {
+                    notes.textContent = assumptions;
+                    details.hidden = !notes.textContent;
+                }
             } catch (error) {
                 console.error('Could not estimate calorie entry:', error);
-                setAiFoodStatus(error.message || 'Could not estimate that entry right now.', 'error');
+                setAiFoodStatus(error.name === 'AbortError' ? 'Estimate timed out. Try again with a specific quantity or duration.'
+                    : error.message || 'Could not estimate that entry right now.', 'error');
             } finally {
+                clearTimeout(timeout);
                 isAiSubmitting = false;
                 aiFoodSubmitEl.disabled = false;
+                aiFoodSubmitEl.textContent = 'Add';
+                if (aiFoodFormEl) aiFoodFormEl.setAttribute('aria-busy', 'false');
                 if (aiFoodInputEl) {
                     aiFoodInputEl.disabled = false;
                 }
@@ -1811,32 +2194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitAiFoodEntry();
             });
         }
-        if (aiFoodSubmitEl) {
-            aiFoodSubmitEl.addEventListener('click', (e) => {
-                e.preventDefault();
-                submitAiFoodEntry();
-            });
-            aiFoodSubmitEl.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                submitAiFoodEntry();
-            });
-        }
-        if (aiFoodInputEl) {
-            aiFoodInputEl.addEventListener('keydown', (e) => {
-                const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13 || e.code === 'Enter';
-                if (isEnter) {
-                    e.preventDefault();
-                    submitAiFoodEntry();
-                }
-            });
-            aiFoodInputEl.addEventListener('keyup', (e) => {
-                const isEnter = e.key === 'Enter' || e.keyCode === 13 || e.which === 13 || e.code === 'Enter';
-                if (isEnter) {
-                    e.preventDefault();
-                    submitAiFoodEntry();
-                }
-            });
-        }
+        // The native form submit event handles button, touch and Enter once.
 
         if (progressPhotoInputEl) {
             progressPhotoInputEl.addEventListener('change', (e) => {
@@ -1845,44 +2203,34 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Goal modal (stepper). Goal is a signed daily balance (intake − expenditure):
-        // negative = deficit, 0 = maintain, positive = surplus.
+        // Goal modal: edit an absolute daily intake target in 50-calorie steps.
         const goalDisplay = document.getElementById('goal-display');
         const goalModalNote = document.getElementById('goal-modal-note');
-        let goalVal = state.goalBalance;
+        let goalVal = state.goal;
         function updateGoalModal() {
-            goalDisplay.textContent = signed(goalVal);
-            const dir = goalVal > 0 ? 'gain' : goalVal < 0 ? 'lose' : 'maintain';
-            if (dir === 'maintain') {
-                goalModalNote.textContent = 'A balance of 0 means you eat exactly what you burn — maintaining your weight.';
-            } else {
-                const isMetric = state.unit === 'metric';
-                const divisor = isMetric ? 7700 : 3500;
-                const unitName = isMetric ? 'kg' : 'pound';
-                const unitNamePlural = isMetric ? 'kg' : 'pounds';
-                const weightPerWeek = Math.abs(goalVal * 7 / divisor).toFixed(1);
-                const unitString = weightPerWeek === '1.0' ? unitName : unitNamePlural;
-                goalModalNote.textContent = `At ${signed(goalVal)} cal/day you can expect to ${dir} ${weightPerWeek} ${unitString} per week.`;
-            }
+            goalDisplay.textContent = goalVal;
+            goalModalNote.textContent = 'Daily intake target. Exercise does not change it.';
+            document.getElementById('btn-goal-minus-50').disabled = goalVal <= MIN_GOAL;
+            document.getElementById('btn-goal-plus-50').disabled = goalVal >= MAX_GOAL;
         }
         if (metricGoalEl) {
             metricGoalEl.addEventListener('click', () => {
-                goalVal = state.goalBalance;
+                goalVal = state.goal;
                 updateGoalModal();
                 goalModal.classList.add('active');
             });
         }
         document.getElementById('btn-goal-minus-50').addEventListener('click', () => {
-            goalVal = Math.max(-GOAL_BALANCE_LIMIT, goalVal - 50);
+            goalVal = Math.max(MIN_GOAL, goalVal - 50);
             updateGoalModal();
         });
         document.getElementById('btn-goal-plus-50').addEventListener('click', () => {
-            goalVal = Math.min(GOAL_BALANCE_LIMIT, goalVal + 50);
+            goalVal = Math.min(MAX_GOAL, goalVal + 50);
             updateGoalModal();
         });
         btnCancelGoal.addEventListener('click', () => goalModal.classList.remove('active'));
         btnSaveGoal.addEventListener('click', () => {
-            state.goalBalance = goalVal;
+            state.goal = goalVal;
             saveState();
             updateUI();
             goalModal.classList.remove('active');
@@ -1936,10 +2284,82 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Smooth pulse on the meter values when an entry is logged.
-        if (meterInValEl) meterInValEl.style.transition = 'transform 0.15s ease-out';
-        if (meterOutValEl) meterOutValEl.style.transition = 'transform 0.15s ease-out';
         setupTabsSettingsAndWeight();
+        setupLiftControls();
+        setupAccessibleControls();
+    }
+
+    function setupAccessibleControls() {
+        document.querySelectorAll('[role="button"]').forEach((control) => {
+            // The date title already has its own keyboard handler.
+            if (control === dateTitlesEl) return;
+            control.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    control.click();
+                }
+            });
+        });
+        if (pendingWheelScrollEl) {
+            pendingWheelScrollEl.tabIndex = 0;
+            pendingWheelScrollEl.setAttribute('role', 'slider');
+            pendingWheelScrollEl.setAttribute('aria-orientation', 'horizontal');
+            pendingWheelScrollEl.setAttribute('aria-label', 'Calories to add');
+            pendingWheelScrollEl.setAttribute('aria-valuemin', '0');
+            pendingWheelScrollEl.setAttribute('aria-valuemax', PENDING_MAX);
+            pendingWheelScrollEl.setAttribute('aria-valuenow', pendingAmount);
+            pendingWheelScrollEl.addEventListener('keydown', (event) => {
+                if (event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+                    event.preventDefault();
+                    addEntry(event.key === 'ArrowUp' ? 'in' : 'out', pendingAmount);
+                    return;
+                }
+                const steps = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 };
+                if (event.key in steps || event.key === 'Home' || event.key === 'End') {
+                    event.preventDefault();
+                    setPendingAmount(event.key === 'Home' ? 0 : event.key === 'End' ? PENDING_MAX
+                        : pendingAmount + steps[event.key] * PENDING_STEP);
+                }
+            });
+        }
+
+        const modals = Array.from(document.querySelectorAll('.modal-overlay'));
+        let activeModal = null;
+        let returnFocus = null;
+        const focusable = (modal) => Array.from(modal.querySelectorAll('button, input, [tabindex="0"]'))
+            .filter((element) => !element.disabled && element.getClientRects().length > 0);
+        const syncModal = () => {
+            const next = modals.find((modal) => modal.classList.contains('active')) || null;
+            if (next === activeModal) return;
+            if (next) {
+                if (!activeModal) returnFocus = document.activeElement;
+                activeModal = next;
+                (focusable(next)[0] || next).focus();
+            } else {
+                activeModal = null;
+                if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+            }
+        };
+        const observer = new MutationObserver(syncModal);
+        modals.forEach((modal) => observer.observe(modal, { attributes: true, attributeFilter: ['class'] }));
+        document.addEventListener('keydown', (event) => {
+            if (!activeModal) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                activeModal.classList.remove('active');
+            } else if (event.key === 'Tab') {
+                const controls = focusable(activeModal);
+                const first = controls[0] || activeModal;
+                const last = controls[controls.length - 1] || activeModal;
+                if (!activeModal.contains(document.activeElement) ||
+                    (event.shiftKey && document.activeElement === first) ||
+                    (!event.shiftKey && document.activeElement === last)) {
+                    event.preventDefault();
+                    (event.shiftKey ? last : first).focus();
+                }
+            }
+        });
+        syncModal();
     }
 
     function setupTabsSettingsAndWeight() {
@@ -1951,24 +2371,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const oldIdx = navTabs.findIndex((t) => t.classList.contains('active'));
             if (oldIdx === clamped) return;
 
-            navTabs.forEach((t) => t.classList.remove('active'));
-            navTabs[clamped].classList.add('active');
-            const dir = clamped > oldIdx ? 'right' : 'left';
-
-            tabPanes.forEach((p) => {
-                p.classList.remove('active', 'slide-in-right', 'slide-in-left', 'slide-out-right', 'slide-out-left');
+            navTabs.forEach((t, index) => {
+                t.classList.remove('active');
+                t.setAttribute('aria-pressed', String(index === clamped));
             });
-            if (oldIdx >= 0) {
-                const oldPane = document.getElementById(navTabs[oldIdx].getAttribute('data-target'));
-                oldPane.classList.add('active', dir === 'right' ? 'slide-out-left' : 'slide-out-right');
-                setTimeout(() => {
-                    if (!oldPane.classList.contains('slide-in-right') && !oldPane.classList.contains('slide-in-left')) {
-                        oldPane.classList.remove('active', 'slide-out-left', 'slide-out-right');
-                    }
-                }, 250);
-            }
+            navTabs[clamped].classList.add('active');
+            tabPanes.forEach((pane) => pane.classList.remove('active'));
             const newPane = document.getElementById(navTabs[clamped].getAttribute('data-target'));
-            newPane.classList.add('active', dir === 'right' ? 'slide-in-right' : 'slide-in-left');
+            newPane.classList.add('active');
 
             if (navTabs[clamped].getAttribute('data-target') === 'tab-weight') {
                 renderWeightTab();
@@ -2013,15 +2423,34 @@ document.addEventListener('DOMContentLoaded', () => {
         // Unit system
         document.querySelectorAll('.unit-toggle').forEach((btn) => {
             btn.addEventListener('click', () => {
-                state.unit = btn.getAttribute('data-unit') === 'metric' ? 'metric' : 'imperial';
+                changeUnit(btn.getAttribute('data-unit'));
                 saveState();
                 applyThemeAndUnits();
                 updateUI();
+                refreshWeightSheet();
                 const weightTab = document.getElementById('tab-weight');
                 if (weightTab && weightTab.classList.contains('active')) renderWeightTab();
                 const liftsTab = document.getElementById('tab-lifts');
                 if (liftsTab && liftsTab.classList.contains('active')) renderLiftsTab();
             });
+        });
+
+        const weightLogButton = document.getElementById('btn-weight-log');
+        if (weightLogButton) weightLogButton.addEventListener('click', () => openWeightEntryModal(viewingDateString));
+        const scaleInput = document.getElementById('weight-axis-span');
+        if (scaleInput) {
+            scaleInput.addEventListener('input', () => scaleInput.setCustomValidity(''));
+            scaleInput.addEventListener('change', () => {
+                if (!scaleInput.value.trim() || !setWeightAxisSpan(Number(scaleInput.value))) {
+                    scaleInput.setCustomValidity('Enter a Y range from 0.2 to 6000.');
+                    scaleInput.reportValidity();
+                }
+            });
+        }
+        const scaleReset = document.getElementById('btn-weight-scale-reset');
+        if (scaleReset) scaleReset.addEventListener('click', () => {
+            if (scaleInput) scaleInput.setCustomValidity('');
+            setWeightAxisSpan(null);
         });
 
         // Weight tab: chart range toggles + the scrolling entry sheet
@@ -2053,10 +2482,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnCancelWeightEdit = document.getElementById('btn-cancel-weight-edit');
         const btnClearWeightEdit = document.getElementById('btn-clear-weight-edit');
         const pickerScrollEl = document.getElementById('weight-picker-scroll');
+        const weightValueInput = document.getElementById('weight-value-input');
+        if (weightValueInput) {
+            weightValueInput.addEventListener('input', () => {
+                weightValueInput.dataset.edited = 'true';
+                if (typeof weightValueInput.setCustomValidity === 'function') weightValueInput.setCustomValidity('');
+            });
+            weightValueInput.addEventListener('change', () => {
+                const value = Number(weightValueInput.value);
+                if (!Number.isFinite(value) || value < MIN_WEIGHT || value > MAX_WEIGHT) return;
+                const index = buildWeightPicker(Math.round(value * 10) / 10);
+                pickerScrollEl.scrollTop = index * PICKER_ROW_H;
+                pickerScrollEl.setAttribute('aria-valuemin', pickerValues[0]);
+                pickerScrollEl.setAttribute('aria-valuemax', pickerValues[pickerValues.length - 1]);
+                updateWeightPickerSelection();
+            });
+        }
 
         // Update the selected (centered) value as the wheel scrolls. rAF-throttled
         // so a fast flick fires the work once per frame, not per scroll event.
         if (pickerScrollEl) {
+            pickerScrollEl.tabIndex = 0;
+            pickerScrollEl.setAttribute('role', 'slider');
+            pickerScrollEl.setAttribute('aria-label', 'Weight');
+            pickerScrollEl.setAttribute('aria-orientation', 'vertical');
+            pickerScrollEl.addEventListener('keydown', (event) => {
+                const steps = { ArrowDown: 1, ArrowUp: -1, ArrowRight: 1, ArrowLeft: -1 };
+                if (!pickerValues.length || (!(event.key in steps) && event.key !== 'Home' && event.key !== 'End')) return;
+                event.preventDefault();
+                updateWeightPickerSelection();
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? pickerValues.length - 1
+                    : Math.max(0, Math.min(pickerValues.length - 1, pickerSelectedIdx + steps[event.key]));
+                pickerScrollEl.scrollTop = next * PICKER_ROW_H;
+                updateWeightPickerSelection();
+            });
             pickerScrollEl.addEventListener('scroll', () => {
                 if (pickerScrollRaf) return;
                 pickerScrollRaf = requestAnimationFrame(() => {
@@ -2093,7 +2552,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (scrubberDot) scrubberDot.style.display = 'none';
             if (scrubberLabel) scrubberLabel.textContent = '';
         }
+        let resetDeleteConfirmation = null;
         function closeDotPopup() {
+            if (resetDeleteConfirmation) resetDeleteConfirmation();
             if (dotPopup) dotPopup.style.display = 'none';
             activeDotDateStr = null;
         }
@@ -2113,6 +2574,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.stopPropagation();
                 const nearest = updateScrubber(e.clientX);
                 if (!nearest) return;
+                if (resetDeleteConfirmation) resetDeleteConfirmation();
                 activeDotDateStr = nearest.dateStr;
                 const dotDate = document.getElementById('weight-dot-popup-date');
                 const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
@@ -2129,6 +2591,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (left < 8) left = 8;
                     if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
                     if (top < 8) top = e.clientY + 14;
+                    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                    if (Number.isFinite(viewportHeight)) top = Math.max(8, Math.min(top, viewportHeight - ph - 8));
                     dotPopup.style.left = `${left}px`;
                     dotPopup.style.top = `${top}px`;
                 }
@@ -2168,6 +2632,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 cancelBtn.style.display = 'block';
 
                 function reset() {
+                    dotDeleteBtn.removeEventListener('click', confirmDelete);
+                    cancelBtn.removeEventListener('click', cancelDelete);
+                    resetDeleteConfirmation = null;
                     deleteConfirming = false;
                     dotEditBtn.style.display = 'block';
                     dotDeleteBtn.textContent = 'Delete';
@@ -2189,6 +2656,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     dotDeleteBtn.removeEventListener('click', confirmDelete);
                     reset();
                 }
+                resetDeleteConfirmation = reset;
                 dotDeleteBtn.addEventListener('click', confirmDelete, { once: true });
                 cancelBtn.addEventListener('click', cancelDelete, { once: true });
             });
@@ -2197,14 +2665,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnSaveWeightEdit) {
             btnSaveWeightEdit.addEventListener('click', () => {
                 const dateStr = weightEditModal._editDateStr;
+                const typed = weightValueInput && weightValueInput.dataset.edited === 'true';
+                if (!typed) updateWeightPickerSelection();
                 // The selected value is whichever row the wheel is centered on.
-                if (dateStr && pickerSelectedIdx >= 0) {
-                    const val = pickerValues[pickerSelectedIdx];
+                if (dateStr && (typed || pickerSelectedIdx >= 0)) {
+                    const val = typed ? Math.round(Number(weightValueInput.value) * 10) / 10 : pickerValues[pickerSelectedIdx];
                     if (typeof val === 'number' && val >= MIN_WEIGHT && val <= MAX_WEIGHT) {
                         state.weightHistory[dateStr] = val;
                         saveState();
                         refreshWeightSheet();
                         renderWeightTab();
+                    } else {
+                        if (weightValueInput && typeof weightValueInput.setCustomValidity === 'function') {
+                            weightValueInput.setCustomValidity(`Enter a weight between ${MIN_WEIGHT} and ${MAX_WEIGHT}.`);
+                            weightValueInput.reportValidity();
+                        }
+                        return;
                     }
                 }
                 weightEditModal.classList.remove('active');
@@ -2236,7 +2712,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Close the dot popup when clicking anywhere outside it.
         document.addEventListener('click', (e) => {
             if (dotPopup && dotPopup.style.display !== 'none' && !dotPopup.contains(e.target)) {
-                dotPopup.style.display = 'none';
+                closeDotPopup();
             }
         });
     }
