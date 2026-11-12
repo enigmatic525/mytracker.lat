@@ -492,3 +492,5 @@ body.keyboard-open #tab-calories { gap: 4px; padding-top: 4px; }
 @media (prefers-reduced-motion: reduce) {
     .hwheel-drag-number { transition: none; }
 }
+
+.settings-version { display: flex; justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }

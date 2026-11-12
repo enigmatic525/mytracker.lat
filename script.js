@@ -24,6 +24,7 @@ if ('serviceWorker' in navigator) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // ===== Constants =====
+    const APP_VERSION = '1.0.0';
     const defaultGoal = 2000;
     const defaultMaintenance = 2500;
     // The daily intake goal is independent of maintenance and exercise.
@@ -164,6 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
 
     function init() {
+        const version = document.getElementById('app-version');
+        if (version) version.textContent = APP_VERSION;
         loadState();
         setupViewport();
         updateDateElements();
