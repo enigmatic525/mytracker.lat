@@ -83,7 +83,7 @@ svg { flex-shrink: 0; }
     width: 100%;
     max-width: 520px;
     height: 100%;
-    padding: max(10px, env(safe-area-inset-top)) 24px calc(58px + env(safe-area-inset-bottom));
+    padding: max(16px, env(safe-area-inset-top)) 24px calc(58px + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -91,7 +91,7 @@ svg { flex-shrink: 0; }
 .header {
     position: relative;
     flex-shrink: 0;
-    padding-bottom: 6px;
+    padding-bottom: 12px;
     border-bottom: 1px solid var(--hairline);
 }
 .date-nav {
@@ -125,14 +125,15 @@ svg { flex-shrink: 0; }
     min-height: 0;
     flex-direction: column;
     overflow: hidden;
-    padding-top: 8px;
-    gap: 8px;
+    padding-top: 16px;
+    gap: 16px;
 }
 .tab-pane > * { flex-shrink: 0; }
 .tracker-status { color: var(--danger); padding: 4px 0; font-size: 11px; max-height: 42px; flex-shrink: 0; overflow: auto; }
 
 /* Intake is the primary number; the daily goal stays beside it. */
-.daily-summary { margin-bottom: 0; }
+.daily-summary { padding: 4px 0; }
+.daily-summary .progress-section { margin-top: 6px; }
 .summary-grid { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 24px; }
 .meter-box { -webkit-user-select: none; user-select: none; }
 .meter-label, .metric-label { font-size: 12px; color: var(--text-secondary); }
@@ -156,7 +157,7 @@ svg { flex-shrink: 0; }
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    margin-top: 6px;
+    margin-top: 10px;
 }
 .burn-summary .meter-box, .burn-summary .metric-item { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 7px; }
 .burn-summary .meter-val, .burn-summary .metric-value { font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -199,7 +200,7 @@ svg { flex-shrink: 0; }
 .estimate-details summary { width: fit-content; cursor: pointer; color: var(--text-secondary); }
 .estimate-details p { position: absolute; top: 100%; left: 0; right: 0; z-index: 40; padding: 10px; max-height: 160px; overflow-y: auto; background: var(--bg-color); border: 1px solid var(--border-color); }
 .section-label { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
-.chips-section { padding: 0; }
+.chips-section { padding: 6px 0; }
 .hwheel { position: relative; width: 100%; height: 34px; margin-top: 0; touch-action: pan-x pinch-zoom; user-select: none; -webkit-user-select: none; }
 .hwheel-scroll {
     display: flex;
@@ -230,7 +231,7 @@ svg { flex-shrink: 0; }
 /* Entries are rows, separated only where the data needs a boundary. */
 .log-boxes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 0; flex: 1 1 0; min-height: 0; overflow: hidden; }
 .log-box { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.log-box .section-label { flex-shrink: 0; padding-bottom: 5px; border-bottom: 1px solid var(--hairline); }
+.log-box .section-label { flex-shrink: 0; padding-bottom: 8px; border-bottom: 1px solid var(--hairline); }
 .log-list { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; }
 .log-list:empty { flex: 0; }
 .log-empty { padding: 14px 0; font-size: 12px; color: var(--text-secondary); }
@@ -242,7 +243,7 @@ svg { flex-shrink: 0; }
 
 /* History keeps its established geometry, without a surrounding card. */
 .chart-section { position: relative; height: clamp(82px, 14dvh, 120px); padding: 6px 0 0; display: flex; flex-direction: column; border-top: 1px solid var(--hairline); }
-.chart-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 5px; }
+.chart-heading { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 8px; }
 #weekly-difference-label { color: var(--text-secondary); font-size: 11px; }
 .chart-container { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
 .chart-plot-area { position: relative; flex: 1; min-height: 0; display: flex; align-items: flex-end; }
@@ -395,8 +396,12 @@ svg { flex-shrink: 0; }
 }
 @media (max-height: 650px) {
     .app-container { padding-top: max(12px, env(safe-area-inset-top)); }
-    .header { padding-bottom: 4px; }
-    .tab-pane.active { padding-top: 6px; gap: 6px; }
+    .header { padding-bottom: 8px; }
+    .tab-pane.active { padding-top: 10px; gap: 8px; }
+    .daily-summary { padding: 0; }
+    .daily-summary .progress-section { margin-top: 0; }
+    .burn-summary { margin-top: 6px; }
+    .chips-section { padding: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
     * { scroll-behavior: auto !important; }
@@ -426,6 +431,7 @@ svg { flex-shrink: 0; }
     .nav-tab { height: 40px; }
     .date-titles h1 { font-size: 18px; }
     .header { padding-bottom: 0; }
+    .tab-pane.active { padding-top: 6px; }
     .date-titles .date { margin-top: 0; font-size: 10px; }
     .meter-in .meter-val { font-size: 30px; }
     .daily-goal { min-height: 0; }
@@ -459,6 +465,8 @@ body.keyboard-open .chips-section { display: none; }
 body.keyboard-open .header { padding-bottom: 0; }
 body.keyboard-open .meter-in .meter-val { font-size: 28px; }
 body.keyboard-open .daily-goal { min-height: 0; }
+body.keyboard-open .daily-summary { padding: 0; }
+body.keyboard-open .daily-summary .progress-section { margin-top: 0; }
 body.keyboard-open .daily-goal .metric-value { font-size: 22px; }
 body.keyboard-open .chart-section { height: 56px; }
 body.keyboard-open #tab-calories { gap: 4px; padding-top: 4px; }
