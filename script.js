@@ -1142,7 +1142,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const cancel = () => { if (gesture) reset(true); };
         wheel.addEventListener('pointercancel', cancel);
-        wheel.addEventListener('lostpointercapture', cancel);
+        wheel.addEventListener('lostpointercapture', (event) => {
+            // Touch starts with implicit capture on the item. When the wheel
+            // takes capture, that item's loss event bubbles here; it is a handoff,
+            // not a cancelled swipe. Only losing the wheel's own capture cancels.
+            if (event.target === wheel && gesture && event.pointerId === gesture.id) cancel();
+        });
         wheel.addEventListener('keydown', clearVisual);
         // A release click must not select the old item after logging reset the wheel.
         wheel.addEventListener('click', (event) => {
@@ -1551,14 +1556,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const maLineEl = document.getElementById('weight-ma-line');
         const projLineEl = document.getElementById('weight-projection-line');
         const shouldBeLineEl = document.getElementById('weight-shouldbe-line');
-        const summaryEl = document.getElementById('weight-projection-summary');
-        const maintSummaryEl = document.getElementById('weight-maint-summary');
         const unitName = state.unit === 'metric' ? 'kg' : 'lbs';
         const latestDate = Object.keys(state.weightHistory).filter((date) => date <= viewingDateString).sort().pop();
         const value = document.getElementById('weight-current-value');
         const label = document.getElementById('weight-current-label');
         if (value) value.textContent = latestDate ? state.weightHistory[latestDate].toFixed(1) : '—';
-        if (label) label.textContent = latestDate === viewingDateString ? 'Logged weight' : latestDate ? `Last logged · ${new Date(latestDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'No weight logged';
+        if (label) label.textContent = latestDate && latestDate !== viewingDateString
+            ? new Date(latestDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
         const unit = document.getElementById('weight-current-unit');
         if (unit) unit.textContent = unitName;
         const logButton = document.getElementById('btn-weight-log');
@@ -1608,41 +1612,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 metricLowEl.textContent = '--';
                 if (metricLowUnitEl) metricLowUnitEl.textContent = '';
-            }
-        }
-
-        // Projection summary: weekly rate + projected value 14 days out.
-        if (summaryEl) {
-            let txt = '';
-            if (trend && allWKeys.length > 0) {
-                const lastKey = allWKeys[allWKeys.length - 1];
-                const lastEntryW = state.weightHistory[lastKey];
-                const lastEntryT = new Date(lastKey + 'T12:00:00').getTime() / 86400000;
-                const ratePerWeek = trend.slopePerDay * 7;
-                const horizon = 14;
-                const projected = lastEntryW + trend.slopePerDay * horizon;
-                const projDate = new Date((lastEntryT + horizon) * 86400000);
-                const fmt = (dt) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                if (Math.abs(ratePerWeek) < 0.05) {
-                    txt = `Holding steady · about ${projected.toFixed(1)} ${unitName} through ${fmt(projDate)}`;
-                } else {
-                    const sign = ratePerWeek > 0 ? '+' : '';
-                    txt = `${sign}${ratePerWeek.toFixed(1)} ${unitName}/week · projected ${projected.toFixed(1)} ${unitName} by ${fmt(projDate)}`;
-                }
-            }
-            summaryEl.textContent = txt;
-            summaryEl.style.display = txt ? '' : 'none';
-        }
-
-        // Maintenance calibration: tell the user whether their BMR+NEAT looks off,
-        // and explain the gray dashed line they're now seeing.
-        if (maintSummaryEl) {
-            const m = computeMaintenanceEstimate();
-            if (m) {
-                maintSummaryEl.textContent = `Estimated baseline: ${m.est} cal/day from ${m.nDays} logged days. Current: ${m.current}. Dashed line: predicted weight.`;
-                maintSummaryEl.style.display = '';
-            } else {
-                maintSummaryEl.style.display = 'none';
             }
         }
 

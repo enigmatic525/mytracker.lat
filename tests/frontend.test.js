@@ -890,3 +890,42 @@ test('an unavailable migration backup leaves the original stored data unchanged 
     assert.equal(app.dayData('2026-11-09').in, 450);
     assert.equal(storage.get('calorieTrackerStateV2'), JSON.stringify(original));
 });
+
+test('transferring implicit touch capture from a wheel item to its parent does not cancel logging', () => {
+    const { app, elements } = tracker(undefined, { fullInit: true });
+    const selector = elements.get('pending-wheel-scroll');
+    const wheel = elements.get('pending-wheel');
+    selector.dispatch('keydown', { key: 'ArrowRight' });
+    selector.dispatch('keydown', { key: 'ArrowRight' });
+    const item = selector.children[2];
+    wheel.dispatch('pointerdown', { pointerId: 1, pointerType: 'touch', button: 0, clientX: 100, clientY: 100, target: item });
+    wheel.dispatch('pointermove', { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 55, target: item });
+    // Safari's implicit item capture is lost when the parent takes explicit capture.
+    // This child-targeted event bubbles to the wheel before the next pointer event.
+    wheel.dispatch('lostpointercapture', { pointerId: 1, target: item });
+    wheel.dispatch('pointerup', { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 45 });
+    wheel.dispatch('lostpointercapture', { pointerId: 1, target: wheel });
+    assert.equal(app.dayData('2026-11-10').in, 100);
+    assert.equal(app.dayData('2026-11-10').out, 0);
+    assert.equal(app.getState().history['2026-11-10'].length, 1);
+    assert.equal(Number(selector.getAttribute('aria-valuenow')), 0);
+});
+
+test('losing the wheel own capture cancels a swipe, while another pointer capture loss does not', () => {
+    const { app, elements } = tracker(undefined, { fullInit: true });
+    const selector = elements.get('pending-wheel-scroll');
+    const wheel = elements.get('pending-wheel');
+    selector.dispatch('keydown', { key: 'ArrowRight' });
+    wheel.dispatch('pointerdown', { pointerId: 1, pointerType: 'touch', button: 0, clientX: 100, clientY: 100 });
+    wheel.dispatch('pointermove', { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 50 });
+    wheel.dispatch('lostpointercapture', { pointerId: 1, target: wheel });
+    wheel.dispatch('pointerup', { pointerId: 1, pointerType: 'touch', clientX: 100, clientY: 40 });
+    assert.equal(app.dayData('2026-11-10').in, 0);
+    assert.equal(Number(selector.getAttribute('aria-valuenow')), 50);
+    wheel.dispatch('pointerdown', { pointerId: 2, pointerType: 'touch', button: 0, clientX: 100, clientY: 100 });
+    wheel.dispatch('pointermove', { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 150 });
+    wheel.dispatch('lostpointercapture', { pointerId: 999, target: wheel });
+    wheel.dispatch('pointerup', { pointerId: 2, pointerType: 'touch', clientX: 100, clientY: 160 });
+    assert.equal(app.dayData('2026-11-10').out, 50);
+    assert.equal(app.getState().history['2026-11-10'].length, 1);
+});

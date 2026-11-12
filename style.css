@@ -283,7 +283,6 @@ svg { flex-shrink: 0; }
 #weight-x-axis .chart-label { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 #weight-x-axis .chart-label:first-child { transform: none; }
 #weight-x-axis .chart-label:last-child { transform: translateX(-100%); }
-.weight-summary { color: var(--text-secondary); font-size: 11px; line-height: 1.4; max-height: 30px; overflow-y: auto; }
 .weight-metrics { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--hairline); padding: 8px 0 10px; }
 .weight-metrics .metric-value { font-size: 22px; margin-top: 4px; letter-spacing: -0.02em; }
 .metric-unit { font-size: 12px; color: var(--text-secondary); }
@@ -408,6 +407,7 @@ svg { flex-shrink: 0; }
 }
 
 .text-action { border: 0; background: none; color: var(--accent-primary); min-height: 32px; padding: 4px 0; font-size: 12px; }
+#weight-current-label:empty { display: none; }
 .weight-overview { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .weight-current { font-size: 36px; line-height: 1.2; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
 #weight-current-unit { font-size: 14px; color: var(--text-secondary); letter-spacing: 0; }

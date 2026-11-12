@@ -140,7 +140,7 @@
             <div id="tab-weight" class="tab-pane">
                 <section class="weight-overview" aria-label="Selected weight">
                     <div>
-                        <p class="metric-label" id="weight-current-label">Weight</p>
+                        <p class="metric-label" id="weight-current-label"></p>
                         <div class="weight-current"><span id="weight-current-value">—</span> <span id="weight-current-unit">lb</span></div>
                     </div>
                     <button type="button" class="text-action" id="btn-weight-log">Log weight</button>
@@ -174,7 +174,7 @@
                                 <div class="weight-chart-scrubdot" id="weight-scrubber-dot" style="display:none;"></div>
                             </div>
                             <div class="weight-chart-label" id="weight-scrubber-label"></div>
-                            <div class="weight-chart-empty" id="weight-chart-empty">Log at least 2 days to see your trend</div>
+                            <div class="weight-chart-empty" id="weight-chart-empty" aria-label="Log weights on two days to show a trend">—</div>
                             <div class="weight-chart-overlay" id="weight-chart-overlay"></div>
                         </div>
                         <div class="chart-labels-row" id="weight-x-axis"></div>
@@ -182,14 +182,10 @@
                 </section>
 
                 <div class="weight-scale-controls">
-                    <label for="weight-axis-span">Y range <span id="weight-axis-unit">lb</span></label>
+                    <label for="weight-axis-span">Range <span id="weight-axis-unit">lb</span></label>
                     <input type="number" id="weight-axis-span" min="0.2" max="6000" step="0.1" inputmode="decimal" aria-label="Weight chart Y axis range">
                     <button type="button" class="text-action" id="btn-weight-scale-reset">Reset scale</button>
                 </div>
-                <div id="weight-projection-summary" class="weight-summary" style="display:none;"></div>
-
-                <div id="weight-maint-summary" class="weight-summary" style="display:none;"></div>
-
                 <div class="weight-data">
                     <section class="metrics-row weight-metrics" aria-label="Weight change">
                         <div class="metric-item">
